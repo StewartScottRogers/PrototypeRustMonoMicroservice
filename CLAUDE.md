@@ -36,5 +36,5 @@ When editing these scripts, note the constraints already worked around: herdr ag
 
 ## Repo conventions
 
-- `.gitignore` is the standard GitHub VisualStudio template — it does **not** cover Rust (`target/`) or the `data/` directory. `data/cipher-sessions.db*` is runtime state from the Cipher MCP server and should not be committed; extend `.gitignore` when adding Rust or keeping local data.
+- `.gitignore` is the standard GitHub VisualStudio template — it does **not** cover Rust (`target/`) directory. `data/cipher-sessions.db*` is runtime state from the Cipher MCP server and should not be committed; extend `.gitignore` when adding Rust or keeping local data.
 - `.gitattributes` sets `* text=auto`; all the merge-driver and diff sections are commented out.

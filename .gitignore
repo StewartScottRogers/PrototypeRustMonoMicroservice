@@ -365,4 +365,10 @@ FodyWeavers.xsd
 # Rust build artifacts (cargo), at any depth
 target/
 
+# Cipher MCP server runtime state: SQLite database plus its WAL/shared-memory
+# sidecars. Local-only; never commit.
+/data/*.db
+/data/*.db-shm
+/data/*.db-wal
+
 
