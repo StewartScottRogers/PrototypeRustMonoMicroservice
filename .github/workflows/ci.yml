@@ -85,7 +85,7 @@ jobs:
       - run: cargo nextest run --profile ci -p ${{ matrix.crate }} --all-features
       - name: Upload JUnit report
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: junit-${{ matrix.crate }}
           path: target/nextest/ci/junit.xml
@@ -112,7 +112,7 @@ jobs:
       - name: Summarise
         if: always()
         run: cargo llvm-cov report --summary-only >> "$GITHUB_STEP_SUMMARY" || true
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-lcov
