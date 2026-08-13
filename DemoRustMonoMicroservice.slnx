@@ -4,5 +4,7 @@
     <File Path=".gitignore" />
     <File Path="hrdrClaudeNative.cmd" />
     <File Path="README.md" />
+    <File Path="RunClaude.cmd" />
   </Folder>
+  <Project Path="Microservices/Microservices.shproj" Id="4f9db47a-6247-472e-946d-11adaef212fe" />
 </Solution>
