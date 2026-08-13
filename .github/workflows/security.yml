@@ -1,0 +1,121 @@
+name: Security
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [master]
+  schedule:
+    # Advisories are published continuously, so a scan that only runs on a
+    # change would miss anything found after the last commit.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # CodeQL needs GitHub Advanced Security, which is not available on
+  # user-owned private repositories. Gated rather than deleted: make the repo
+  # public, or move it to an org on Team/Enterprise, and this starts running
+  # with no edit here. Same pattern as the attestation step in image.yml.
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload findings to the code scanning API
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # "actions" analyses the workflow files themselves for script injection
+        # and similar. It is a real language to CodeQL, not a typo.
+        language: [rust, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          languages: ${{ matrix.language }}
+          # Rust no longer needs the project built first; CodeQL reads the
+          # source directly, which also keeps this job off the cargo cache.
+          build-mode: none
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          category: /language:${{ matrix.language }}
+
+  # Everything below works on a private repository, which is the point: these
+  # are the checks that actually run today.
+
+  workflows:
+    name: Workflow audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # zizmor audits the workflows themselves: unpinned actions, injectable
+      # ${{ }} interpolation inside run blocks, over-broad permissions,
+      # dangerous checkout of PR head. Run through pipx at a pinned version
+      # rather than as an action - one less third-party action to trust.
+      - name: Audit workflows with zizmor
+        run: pipx run zizmor==1.29.0 --no-progress .github/workflows .github/actions
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Whole history: a secret committed and later removed is still a
+          # leaked secret, and is invisible to a shallow checkout.
+          fetch-depth: 0
+          # Especially here: this job scans the checkout for secrets, and the
+          # token checkout leaves in .git/config is exactly such a secret.
+          persist-credentials: false
+
+      # GitHub's own secret scanning needs Advanced Security on a private repo.
+      # gitleaks is the part that works regardless. Installed from a pinned
+      # release rather than via its action, which needs a licence key for
+      # organisation-owned repositories.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks version
+
+      - name: Scan the working tree
+        run: ./gitleaks dir . --redact --no-banner
+
+      - name: Scan the commit history
+        run: ./gitleaks git . --redact --no-banner
+
+  # Single required status check for this workflow, same reasoning as CI OK.
+  security-ok:
+    name: Security OK
+    if: always()
+    needs: [codeql, workflows, secrets]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every upstream job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS"
+          jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<<"$RESULTS" > /dev/null
