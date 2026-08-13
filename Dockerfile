@@ -24,13 +24,18 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
-ARG SERVICE
 COPY --from=planner /app/recipe.json recipe.json
 # Only recipe.json is present here, so this layer is reused until a dependency
 # changes. Copying the sources first would rebuild every crate on every edit —
 # that inversion is the whole point of cargo-chef.
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
+
+# ARG is declared *after* the expensive layers on purpose. Declaring it earlier
+# makes its value part of the cache key for everything below it, so each
+# service would recompile the entire dependency tree from scratch instead of
+# sharing one cooked layer. That mistake cost a 25-minute CI timeout.
+ARG SERVICE
 RUN test -n "${SERVICE}" || (echo "build arg SERVICE is required" >&2; exit 1) \
  && cargo build --release --locked -p "${SERVICE}" \
  && cp "target/release/${SERVICE}" /app/service

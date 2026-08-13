@@ -1,58 +1,139 @@
 # Local development stack.
 #
-# Start it with DevStart.cmd rather than calling docker directly — the script
+# Start it with DevStart.cmd rather than calling docker directly - the script
 # waits for every container to report healthy and prints the URLs.
 #
 #   DevStart.cmd    build and start
+#   DevDemo.cmd     run the whole demonstration and narrate it
 #   DevStatus.cmd   what is running, and is it healthy
 #   DevLogs.cmd     follow the logs
 #   DevStop.cmd     stop, keep the containers
 #   DevDelete.cmd   remove containers and the network, keep data and images
 #   DevRemove.cmd   remove everything, including the database volumes
 #
-# The request path this stack exists to demonstrate:
+# What this stack demonstrates:
 #
-#   you --POST /relay--> gateway-service --POST /echo--> echo-service
+#   you --POST /order--> gateway --writes order+message in ONE transaction--> postgres
+#                            |
+#                    outbox relay publishes
+#                            v
+#                   [ORDER_COMMANDS stream]
+#                            |
+#              one shared consumer, two workers        <- MESSAGING: split
+#                            v
+#                        worker x2
+#                            |
+#                    publishes an event
+#                            v
+#                    [ORDER_EVENTS stream]
+#                       /            \                 <- EVENTING: copied
+#            notifier consumer     audit consumer
+#                   |                     |
+#            logs a notification    writes to postgres
+#
+# Every hop is one trace in Jaeger at http://localhost:16686.
 
-# Names the project, so container names are stable and DevRemove.cmd cannot
-# touch anything belonging to another compose stack on this machine.
 name: prototype-rust-microservices
 
+# YAML anchors: defined once, merged into each service below with <<:. Keeps
+# nine services from repeating the same six lines.
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  environment: &service-environment
+    RUST_LOG: ${RUST_LOG:-info}
+    NATS_URL: nats://nats:4222
+    REDIS_URL: redis://redis:6379
+    DATABASE_URL: postgres://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/${POSTGRES_DB:-devdb}
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+
+# The image is distroless - no shell, no curl - so each service probes itself.
+# See service_core::health::self_check.
+x-service-healthcheck: &service-healthcheck
+  test: ["CMD", "/usr/local/bin/service", "healthcheck"]
+  interval: 5s
+  timeout: 3s
+  retries: 5
+  start_period: 15s
+
 services:
+  # ---------------------------------------------------------------------------
+  # The services
+  # ---------------------------------------------------------------------------
+
   gateway-service:
+    <<: *service-defaults
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        # The one Dockerfile builds any crate in the workspace; this picks one.
         SERVICE: gateway-service
     image: prototype-rust/gateway-service:dev
     environment:
+      <<: *service-environment
       PORT: 8080
-      # "echo-service" resolves over the compose network: Docker runs a DNS
-      # server that maps each service name to its container.
       ECHO_SERVICE_URL: http://echo-service:8080
-      RUST_LOG: ${RUST_LOG:-info}
     ports:
-      # host:container. Change the host side by setting GATEWAY_PORT.
       - "${GATEWAY_PORT:-8080}:8080"
     depends_on:
-      echo-service:
-        # Waits for echo-service to pass its healthcheck, not merely to start.
-        # Without `condition`, compose only waits for the container to exist.
-        condition: service_healthy
-    healthcheck:
-      # The image is distroless — no shell, no curl. The service binary probes
-      # itself when given this argument (see service-core::health::self_check).
-      test: ["CMD", "/usr/local/bin/service", "healthcheck"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      # Failures during start_period do not count against `retries`.
-      start_period: 10s
-    restart: unless-stopped
+      postgres: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      echo-service: { condition: service_healthy }
+    healthcheck: *service-healthcheck
+
+  worker-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: worker-service
+    image: prototype-rust/worker-service:dev
+    environment:
+      <<: *service-environment
+      PORT: 8080
+    # Two replicas sharing one durable consumer. This is the messaging half of
+    # the demonstration: the load splits, it does not double. No ports are
+    # published because two containers cannot bind the same host port.
+    deploy:
+      replicas: 2
+    depends_on:
+      nats: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck: *service-healthcheck
+
+  notifier-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: notifier-service
+    image: prototype-rust/notifier-service:dev
+    environment:
+      <<: *service-environment
+      PORT: 8080
+    depends_on:
+      nats: { condition: service_healthy }
+    healthcheck: *service-healthcheck
+
+  audit-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: audit-service
+    image: prototype-rust/audit-service:dev
+    environment:
+      <<: *service-environment
+      PORT: 8080
+    depends_on:
+      nats: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    healthcheck: *service-healthcheck
 
   echo-service:
+    <<: *service-defaults
     build:
       context: .
       dockerfile: Dockerfile
@@ -60,28 +141,48 @@ services:
         SERVICE: echo-service
     image: prototype-rust/echo-service:dev
     environment:
+      <<: *service-environment
       PORT: 8080
-      RUST_LOG: ${RUST_LOG:-info}
     ports:
-      # Exposed on a different host port so you can call it directly while
-      # debugging, without going through the gateway.
+      # Exposed separately so the synchronous path can be called directly.
       - "${ECHO_PORT:-8081}:8080"
-    healthcheck:
-      test: ["CMD", "/usr/local/bin/service", "healthcheck"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
-    restart: unless-stopped
+    healthcheck: *service-healthcheck
 
   # ---------------------------------------------------------------------------
-  # Backing services.
-  #
-  # Nothing in the Rust code talks to these yet — they are here so the
-  # connection details exist before the first crate needs them. DATABASE_URL and
-  # REDIS_URL are deliberately NOT passed to the services above: a service that
-  # does not use a database should not be told about one.
+  # Infrastructure
   # ---------------------------------------------------------------------------
+
+  nats:
+    image: nats:2-alpine
+    # -js enables JetStream (the persistent log). Without it only plain
+    # fire-and-forget pub/sub works, and every durable consumer call fails.
+    # -m 8222 opens the monitoring port the healthcheck below uses.
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "${NATS_PORT:-4222}:4222"
+      - "${NATS_MONITOR_PORT:-8222}:8222"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - nats-data:/data
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686" # the UI you actually look at
+      - "4317:4317" # OTLP over gRPC, where the services send spans
+    # Deliberately no healthcheck: the image has no shell, wget or curl to run
+    # one with. Nothing depends on Jaeger being up either - a service that
+    # cannot reach the collector drops spans and keeps serving traffic, which
+    # is the correct trade for observability.
+    restart: unless-stopped
 
   postgres:
     image: postgres:17-alpine
@@ -105,7 +206,6 @@ services:
 
   redis:
     image: redis:8-alpine
-    # Persist to disk so a restart does not silently empty the cache.
     command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -120,5 +220,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  nats-data:
   postgres-data:
   redis-data:

@@ -17,9 +17,14 @@
 //! handler needs to reach them. Rust makes you be explicit about how something
 //! is shared, which is what [`AppState`] and axum's `State` extractor are for.
 
+mod orders;
+
+use anyhow::Context as _;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::{Json, Router, routing::post};
+use messaging_core::Messaging;
+use orders::OrderState;
 use serde::{Deserialize, Serialize};
 use service_core::{health_routes, init_tracing, port_from_env, self_check};
 use std::net::SocketAddr;
@@ -168,10 +173,23 @@ fn bad_gateway(message: &str) -> (StatusCode, Json<ErrorResponse>) {
 /// Merging first and calling `.with_state` afterwards is a compile error, not a
 /// runtime surprise. The type system is tracking "has this router been given
 /// everything it needs yet".
-fn app(state: AppState) -> Router {
+fn app(state: AppState, order_state: OrderState) -> Router {
     let relay_routes = Router::new().route("/relay", post(relay)).with_state(state);
 
-    relay_routes.merge(health_routes(SERVICE))
+    relay_routes
+        // Synchronous HTTP call to another service.
+        .merge(orders::routes(order_state))
+        // Asynchronous: accepted here, processed elsewhere, later.
+        .merge(health_routes(SERVICE))
+}
+
+/// The router used by the tests, which have no database.
+#[cfg(test)]
+fn relay_only_app(state: AppState) -> Router {
+    Router::new()
+        .route("/relay", post(relay))
+        .with_state(state)
+        .merge(health_routes(SERVICE))
 }
 
 #[tokio::main]
@@ -196,11 +214,26 @@ async fn main() -> anyhow::Result<()> {
         echo_url: echo_url.clone(),
     };
 
+    let database_url = std::env::var("DATABASE_URL")
+        .context("DATABASE_URL must be set - the outbox lives in Postgres")?;
+    let nats_url = std::env::var("NATS_URL").unwrap_or_else(|_| "nats://nats:4222".to_owned());
+
+    let pool = db_core::connect_and_migrate(&database_url).await?;
+    let messaging = Messaging::connect(&nats_url).await?;
+    messaging.ensure_streams().await?;
+
+    // The relay runs alongside the HTTP server for the life of the process.
+    // `tokio::spawn` puts it on its own task; without it, the loop would never
+    // yield back to the server.
+    tokio::spawn(orders::relay(pool.clone(), messaging));
+
+    let order_state = OrderState { pool };
+
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, upstream = %echo_url, "listening");
 
-    axum::serve(listener, app(state))
+    axum::serve(listener, app(state, order_state))
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
@@ -268,7 +301,10 @@ mod tests {
             echo_url,
         };
 
-        let response = app(state).oneshot(relay_request()).await.unwrap();
+        let response = relay_only_app(state)
+            .oneshot(relay_request())
+            .await
+            .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
@@ -290,7 +326,10 @@ mod tests {
             echo_url: format!("http://{addr}"),
         };
 
-        let response = app(state).oneshot(relay_request()).await.unwrap();
+        let response = relay_only_app(state)
+            .oneshot(relay_request())
+            .await
+            .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
         assert_eq!(
@@ -308,7 +347,10 @@ mod tests {
             echo_url,
         };
 
-        let response = app(state).oneshot(relay_request()).await.unwrap();
+        let response = relay_only_app(state)
+            .oneshot(relay_request())
+            .await
+            .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     }
@@ -322,7 +364,10 @@ mod tests {
             echo_url,
         };
 
-        let response = app(state).oneshot(relay_request()).await.unwrap();
+        let response = relay_only_app(state)
+            .oneshot(relay_request())
+            .await
+            .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     }
@@ -339,7 +384,7 @@ mod tests {
             .body(Body::empty())
             .unwrap();
 
-        let response = app(state).oneshot(request).await.unwrap();
+        let response = relay_only_app(state).oneshot(request).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
     }
