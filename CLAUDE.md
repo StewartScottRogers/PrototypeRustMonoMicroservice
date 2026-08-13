@@ -51,6 +51,15 @@ Name the concept so it can be looked up later ("this is the *turbofish*", "`?` r
 
 **All Rust microservices live under `Microservices/`** — crates in there, never sibling top-level directories.
 
+Keeping the solution current is a **two-file** job, and it is easy to do only half of it:
+
+| New file lives in | Register it in | How |
+| --- | --- | --- |
+| `Microservices/…` | `Microservices/Microservices.projitems` | `<None Include="$(MSBuildThisFileDirectory)…" />` |
+| Anywhere else (repo root, `.github/`, `.claude/`) | `DemoRustMonoMicroservice.slnx` | `<File Path="…" />` inside the right `<Folder>` |
+
+The `.slnx` has folders for `Solution Items`, `Cargo`, `Dev Environment`, `GitHub`, and `Agent Skills`. A root-level file that is in neither place is invisible in Visual Studio even though it is committed and working.
+
 **Every `.rs` file must be registered in `Microservices/Microservices.projitems`** as an inert `<None Include="…" />` item. A shared project only surfaces files listed in `.projitems`, so an unregistered file is invisible in Solution Explorer. Adding or removing a Rust file is a two-step operation: change the file on disk *and* update `.projitems` in the same change. `<None>` items are never fed to the C# compiler, so this is display-only and cannot break a build.
 
 Visual Studio is a **viewer** for this code, not its build system — the `.shproj` produces no build output and the C# code-sharing targets do nothing with `.rs`. Build, test, and lint with cargo from the command line; don't route those through Visual Studio. Do not restructure or delete `.shproj` / `.projitems` for tidiness — they are the only thing making the folder openable in VS.
