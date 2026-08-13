@@ -101,8 +101,12 @@ jobs:
       # Signs "this digest came from this workflow, repo, and commit", and
       # stores it next to the image. Verify with:
       #   gh attestation verify oci://<image>:<tag> --repo <owner>/<repo>
+      # GitHub refuses to persist attestations for user-owned private repos:
+      # "Feature not available for user-owned private repositories." Making the
+      # repo public, or moving it to an org on Team/Enterprise, turns this on
+      # with no further change here.
       - name: Attest build provenance
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@v3
         with:
           subject-name: ${{ steps.name.outputs.image }}
