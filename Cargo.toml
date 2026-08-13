@@ -20,6 +20,11 @@ service-core = { path = "Microservices/service-core" }
 
 anyhow = "1"
 axum = "0.8"
+# HTTP *client*, used by gateway-service to call echo-service. TLS is switched
+# off (`default-features = false`): traffic between containers on the compose
+# network is plain HTTP, and the default TLS stack is a large dependency to
+# compile for nothing.
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }
 tracing = "0.1"

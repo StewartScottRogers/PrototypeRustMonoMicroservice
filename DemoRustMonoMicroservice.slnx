@@ -7,6 +7,38 @@
     <File Path="README.md" />
     <File Path="RunClaude.cmd" />
   </Folder>
+  <Folder Name="/Cargo/">
+    <File Path="Cargo.toml" />
+    <File Path="Cargo.lock" />
+    <File Path="rust-toolchain.toml" />
+    <File Path="clippy.toml" />
+    <File Path="deny.toml" />
+    <File Path=".config/nextest.toml" />
+  </Folder>
+  <Folder Name="/Dev Environment/">
+    <File Path="compose.yaml" />
+    <File Path="Dockerfile" />
+    <File Path=".dockerignore" />
+    <File Path="DevStart.cmd" />
+    <File Path="DevStatus.cmd" />
+    <File Path="DevLogs.cmd" />
+    <File Path="DevStop.cmd" />
+    <File Path="DevDelete.cmd" />
+    <File Path="DevRemove.cmd" />
+  </Folder>
+  <Folder Name="/GitHub/">
+    <File Path=".github/dependabot.yml" />
+    <File Path=".github/workflows/ci.yml" />
+    <File Path=".github/workflows/image.yml" />
+    <File Path=".github/actions/setup-rust/action.yml" />
+    <File Path=".github/scripts/affected-crates.sh" />
+    <File Path=".github/scripts/binary-crates.sh" />
+  </Folder>
+  <Folder Name="/Agent Skills/">
+    <File Path=".claude/skills/rust-ci-gate/SKILL.md" />
+    <File Path=".claude/skills/rust-service-image/SKILL.md" />
+    <File Path=".claude/skills/dev-environment/SKILL.md" />
+  </Folder>
   <Project Path="data/data.shproj" Id="643f1492-a899-443a-9489-b81691631fa6" />
   <Project Path="Microservices/Microservices.shproj" Id="4f9db47a-6247-472e-946d-11adaef212fe" />
 </Solution>

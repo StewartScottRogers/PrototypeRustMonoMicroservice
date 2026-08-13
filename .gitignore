@@ -371,6 +371,10 @@ target/
 /data/*.db-shm
 /data/*.db-wal
 
+# Local compose overrides: ports, passwords, RUST_LOG. compose.yaml has
+# defaults for everything, so this file is optional and never committed.
+/.env
+
 # Rust — the GitHub VisualStudio template does not cover any of this.
 /target/
 **/*.rs.bk

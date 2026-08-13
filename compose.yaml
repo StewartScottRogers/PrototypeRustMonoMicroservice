@@ -1,0 +1,124 @@
+# Local development stack.
+#
+# Start it with DevStart.cmd rather than calling docker directly — the script
+# waits for every container to report healthy and prints the URLs.
+#
+#   DevStart.cmd    build and start
+#   DevStatus.cmd   what is running, and is it healthy
+#   DevLogs.cmd     follow the logs
+#   DevStop.cmd     stop, keep the containers
+#   DevDelete.cmd   remove containers and the network, keep data and images
+#   DevRemove.cmd   remove everything, including the database volumes
+#
+# The request path this stack exists to demonstrate:
+#
+#   you --POST /relay--> gateway-service --POST /echo--> echo-service
+
+# Names the project, so container names are stable and DevRemove.cmd cannot
+# touch anything belonging to another compose stack on this machine.
+name: prototype-rust-microservices
+
+services:
+  gateway-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # The one Dockerfile builds any crate in the workspace; this picks one.
+        SERVICE: gateway-service
+    image: prototype-rust/gateway-service:dev
+    environment:
+      PORT: 8080
+      # "echo-service" resolves over the compose network: Docker runs a DNS
+      # server that maps each service name to its container.
+      ECHO_SERVICE_URL: http://echo-service:8080
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      # host:container. Change the host side by setting GATEWAY_PORT.
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      echo-service:
+        # Waits for echo-service to pass its healthcheck, not merely to start.
+        # Without `condition`, compose only waits for the container to exist.
+        condition: service_healthy
+    healthcheck:
+      # The image is distroless — no shell, no curl. The service binary probes
+      # itself when given this argument (see service-core::health::self_check).
+      test: ["CMD", "/usr/local/bin/service", "healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      # Failures during start_period do not count against `retries`.
+      start_period: 10s
+    restart: unless-stopped
+
+  echo-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: echo-service
+    image: prototype-rust/echo-service:dev
+    environment:
+      PORT: 8080
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      # Exposed on a different host port so you can call it directly while
+      # debugging, without going through the gateway.
+      - "${ECHO_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/service", "healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Backing services.
+  #
+  # Nothing in the Rust code talks to these yet — they are here so the
+  # connection details exist before the first crate needs them. DATABASE_URL and
+  # REDIS_URL are deliberately NOT passed to the services above: a service that
+  # does not use a database should not be told about one.
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-devuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-devdb}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devuser} -d ${POSTGRES_DB:-devdb}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    volumes:
+      # A named volume survives DevDelete.cmd, so data outlives a restart.
+      # DevRemove.cmd is the one that deletes it.
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    # Persist to disk so a restart does not silently empty the cache.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
