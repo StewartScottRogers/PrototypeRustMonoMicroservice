@@ -42,20 +42,29 @@ docker run --rm -p 8080:8080 echo-service:local
    (GitHub's attestation store). Missing `id-token: write` is the usual cause of
    a signing failure.
 
-3. **`provenance: false` on `build-push-action` is deliberate.** BuildKit's own
+3. **Attestation only runs when the repo is public.** GitHub rejects
+   `attest-build-provenance` on user-owned private repositories with
+   "Feature not available for user-owned private repositories", *after* the
+   image has already been pushed — so the job fails with a published image and
+   no attestation. The step is gated on
+   `github.event.repository.visibility == 'public'`. Make the repo public, or
+   move it to an org on Team/Enterprise, and it starts working with no edit
+   here.
+
+4. **`provenance: false` on `build-push-action` is deliberate.** BuildKit's own
    provenance attachment and `actions/attest-build-provenance` both write to the
    image index; running both produces a confusing double attestation. Keep the
    GitHub one — it is what `gh attestation verify` reads.
 
-4. **PRs build but must not push.** `push: ${{ github.event_name != 'pull_request' }}`.
+5. **PRs build but must not push.** `push: ${{ github.event_name != 'pull_request' }}`.
    A PR from a fork has a read-only `GITHUB_TOKEN` and would fail the push
    anyway; more importantly an unreviewed PR must not publish a tag.
 
-5. **`cargo chef cook` runs before the sources are copied.** Inverting those two
+6. **`cargo chef cook` runs before the sources are copied.** Inverting those two
    layers means every source edit recompiles all dependencies — the entire
    reason cargo-chef exists. If build times jump, check that order first.
 
-6. **The dependency layer is cooked workspace-wide**, not per-service. Every
+7. **The dependency layer is cooked workspace-wide**, not per-service. Every
    service image then shares one cached layer. Adding `-p <service>` to the cook
    step makes each image compile its own copy of the same crates.
 
