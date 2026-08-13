@@ -84,7 +84,10 @@ this avoids. `rustfmt` and `clippy` come from the toolchain file's `components`;
 2. Coverage threshold is `--fail-under-lines 60`. Raise it as the workspace
    grows; lowering it needs a reason in the PR body.
 3. `affected-crates.sh` is bash + jq, so the `affected` job must stay on a
-   Linux runner.
+   Linux runner. It runs under `set -euo pipefail`; when adding to it, remember
+   that expanding `${#array[@]}` on a declared-but-empty associative array is an
+   *unbound variable* error, not a zero. Guard with `${array[*]+x}` first — this
+   already bit the docs-only-change path once.
 
 ## Debugging
 
