@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Viewer-only shared project for the local Docker Compose stack.
+
+  The files stay at the repository root: the Dockerfile's build context is the
+  whole workspace, and the Dev*.cmd scripts are meant to be obvious to anyone
+  who opens the repo folder. This project only links to them.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>0d578c2b-d6e3-45c5-80d9-14a7e4b602a3</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>DevEnvironment</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\compose.yaml" Link="compose.yaml" />
+    <None Include="$(MSBuildThisFileDirectory)..\Dockerfile" Link="Dockerfile" />
+    <None Include="$(MSBuildThisFileDirectory)..\.dockerignore" Link=".dockerignore" />
+    <None Include="$(MSBuildThisFileDirectory)..\DevStart.cmd" Link="DevStart.cmd" />
+    <None Include="$(MSBuildThisFileDirectory)..\DevStatus.cmd" Link="DevStatus.cmd" />
+    <None Include="$(MSBuildThisFileDirectory)..\DevLogs.cmd" Link="DevLogs.cmd" />
+    <None Include="$(MSBuildThisFileDirectory)..\DevStop.cmd" Link="DevStop.cmd" />
+    <None Include="$(MSBuildThisFileDirectory)..\DevDelete.cmd" Link="DevDelete.cmd" />
+    <None Include="$(MSBuildThisFileDirectory)..\DevRemove.cmd" Link="DevRemove.cmd" />
+  </ItemGroup>
+</Project>

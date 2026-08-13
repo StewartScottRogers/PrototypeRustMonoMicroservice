@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Viewer-only shared project for the Cargo workspace configuration.
+
+  The files themselves must stay at the repository root - cargo, rustup,
+  clippy and cargo-deny all locate them relative to the workspace root, and
+  moving them here would break every build. This project links to them so they
+  are visible in Solution Explorer; Link controls the displayed name.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>588a4070-b600-4443-a9b6-4a68094b0df8</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>Cargo</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\Cargo.toml" Link="Cargo.toml" />
+    <None Include="$(MSBuildThisFileDirectory)..\Cargo.lock" Link="Cargo.lock" />
+    <None Include="$(MSBuildThisFileDirectory)..\rust-toolchain.toml" Link="rust-toolchain.toml" />
+    <None Include="$(MSBuildThisFileDirectory)..\clippy.toml" Link="clippy.toml" />
+    <None Include="$(MSBuildThisFileDirectory)..\deny.toml" Link="deny.toml" />
+    <None Include="$(MSBuildThisFileDirectory)..\.config\nextest.toml" Link=".config\nextest.toml" />
+  </ItemGroup>
+</Project>

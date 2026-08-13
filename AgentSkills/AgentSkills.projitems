@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Viewer-only shared project for the Claude Code skills.
+
+  The files stay under .claude/skills/ because that is where Claude Code
+  discovers them, and each skill must be its own directory containing a file
+  named SKILL.md. Link gives each one a distinguishable name in Solution
+  Explorer, since they are otherwise all called SKILL.md.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>d8c4217e-89dd-4161-88f1-01437da00608</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>AgentSkills</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\rust-ci-gate\SKILL.md" Link="rust-ci-gate\SKILL.md" />
+    <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\rust-service-image\SKILL.md" Link="rust-service-image\SKILL.md" />
+    <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\dev-environment\SKILL.md" Link="dev-environment\SKILL.md" />
+  </ItemGroup>
+</Project>
