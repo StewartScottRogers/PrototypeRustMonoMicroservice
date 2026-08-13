@@ -135,6 +135,38 @@ jobs:
           path: lcov.info
           if-no-files-found: ignore
 
+  # The unit tests above never touch a broker or a database. This job is the
+  # one that proves the pieces actually work together: it starts the real
+  # compose stack and drives it the same way DevDemo.cmd does.
+  integration:
+    name: integration (compose stack)
+    needs: affected
+    if: needs.affected.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Start the stack
+        # --wait blocks until every container with a healthcheck reports
+        # healthy, so the smoke test never races the startup.
+        run: docker compose up --detach --build --wait
+
+      - name: Smoke test
+        run: .github/scripts/smoke-test.sh
+
+      - name: Container logs
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
   supply-chain:
     name: cargo-deny
     runs-on: ubuntu-latest
@@ -152,7 +184,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [affected, lint, test, coverage, supply-chain]
+    needs: [affected, lint, test, coverage, integration, supply-chain]
     runs-on: ubuntu-latest
     steps:
       - name: Check every upstream job

@@ -16,7 +16,25 @@
     <None Include="$(MSBuildThisFileDirectory)service-core\src\telemetry.rs" />
     <None Include="$(MSBuildThisFileDirectory)echo-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)echo-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)messaging-core\Cargo.toml" />
+    <None Include="$(MSBuildThisFileDirectory)messaging-core\src\lib.rs" />
+    <None Include="$(MSBuildThisFileDirectory)messaging-core\src\client.rs" />
+    <None Include="$(MSBuildThisFileDirectory)messaging-core\src\contract.rs" />
+    <None Include="$(MSBuildThisFileDirectory)messaging-core\src\envelope.rs" />
+    <None Include="$(MSBuildThisFileDirectory)messaging-core\src\idempotency.rs" />
+    <None Include="$(MSBuildThisFileDirectory)messaging-core\src\subjects.rs" />
+    <None Include="$(MSBuildThisFileDirectory)messaging-core\src\trace.rs" />
+    <None Include="$(MSBuildThisFileDirectory)db-core\Cargo.toml" />
+    <None Include="$(MSBuildThisFileDirectory)db-core\src\lib.rs" />
+    <None Include="$(MSBuildThisFileDirectory)db-core\migrations\0001_orders_outbox_audit.sql" />
     <None Include="$(MSBuildThisFileDirectory)gateway-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)gateway-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)gateway-service\src\orders.rs" />
+    <None Include="$(MSBuildThisFileDirectory)worker-service\Cargo.toml" />
+    <None Include="$(MSBuildThisFileDirectory)worker-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)notifier-service\Cargo.toml" />
+    <None Include="$(MSBuildThisFileDirectory)notifier-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)audit-service\Cargo.toml" />
+    <None Include="$(MSBuildThisFileDirectory)audit-service\src\main.rs" />
   </ItemGroup>
 </Project>

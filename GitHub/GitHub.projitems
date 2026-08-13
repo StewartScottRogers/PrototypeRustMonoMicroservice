@@ -23,5 +23,6 @@
     <None Include="$(MSBuildThisFileDirectory)..\.github\actions\setup-rust\action.yml" Link="actions\setup-rust\action.yml" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\affected-crates.sh" Link="scripts\affected-crates.sh" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\binary-crates.sh" Link="scripts\binary-crates.sh" />
+    <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\smoke-test.sh" Link="scripts\smoke-test.sh" />
   </ItemGroup>
 </Project>
