@@ -10,6 +10,7 @@ A Cargo workspace and a GitHub Actions CI gate exist; there are no C# sources.
 - `Microservices/service-core` — shared library: health probes, tracing setup.
 - `Microservices/echo-service` — reference binary service (axum + tokio). Copy it to start a new service.
 - `.github/workflows/ci.yml` + `.github/actions/setup-rust` + `.github/scripts/affected-crates.sh` — the CI gate. Rules and failure modes are documented in `.claude/skills/rust-ci-gate/SKILL.md`; read that before changing CI.
+- `Dockerfile` + `.github/workflows/image.yml` — one parameterised image build for every service, published to GHCR with a provenance attestation. See `.claude/skills/rust-service-image/SKILL.md`.
 - `rust-toolchain.toml`, `clippy.toml`, `deny.toml`, `.config/nextest.toml` — tool config, all at the workspace root.
 - `DemoRustMonoMicroservice.slnx` — Visual Studio solution (XML `.slnx` format, not `.sln`). Holds a "Solution Items" folder for the root-level files plus the `Microservices` project.
 - `Microservices/Microservices.shproj` + `.projitems` — a C# shared project (`HasSharedItems`, root namespace `Microservices`) used only to surface the Rust files in Solution Explorer.
@@ -24,6 +25,9 @@ cargo test --workspace --all-features
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo run -p echo-service            # PORT=8080 by default
+
+docker build --build-arg SERVICE=echo-service -t echo-service:local .
+docker run --rm -p 8080:8080 echo-service:local
 ```
 
 CI runs the same commands, plus `cargo nextest run --profile ci`, `cargo llvm-cov`, and `cargo deny check`.
