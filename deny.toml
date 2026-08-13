@@ -16,6 +16,12 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    # xxhash-rust, pulled in by the NATS client. Permissive, and explicitly
+    # compatible with the rest of this list.
+    "BSL-1.0",
+    # webpki-roots, pulled in by the TLS stack under async-nats. It covers the
+    # certificate *data*, not code.
+    "CDLA-Permissive-2.0",
     "ISC",
     "MIT",
     "MPL-2.0",
