@@ -12,7 +12,8 @@ A Cargo workspace and a GitHub Actions CI gate exist; there are no C# sources.
 - `Microservices/gateway-service` — front door; `POST /relay` forwards to `echo-service` over the compose network.
 - `compose.yaml` + `Dev*.cmd` — the local development stack (both services, Postgres, Redis). See `.claude/skills/dev-environment/SKILL.md`.
 - `.github/workflows/ci.yml` + `.github/actions/setup-rust` + `.github/scripts/affected-crates.sh` — the CI gate. Rules and failure modes are documented in `.claude/skills/rust-ci-gate/SKILL.md`; read that before changing CI.
-- `Dockerfile` + `.github/workflows/image.yml` — one parameterised image build for every service, published to GHCR with a provenance attestation. See `.claude/skills/rust-service-image/SKILL.md`.
+- `Dockerfile` + `.github/workflows/image.yml` — one parameterised image build for every service, published to GHCR with a provenance attestation and a Trivy CVE scan. See `.claude/skills/rust-service-image/SKILL.md`.
+- `.github/workflows/security.yml` — CodeQL (public repos only), zizmor workflow audit, gitleaks secret scan. Every third-party action is pinned to a commit SHA; see `.claude/skills/gh-supply-chain/SKILL.md` before adding one.
 - `rust-toolchain.toml`, `clippy.toml`, `deny.toml`, `.config/nextest.toml` — tool config, all at the workspace root.
 - `DemoRustMonoMicroservice.slnx` — Visual Studio solution (XML `.slnx` format, not `.sln`). Holds a "Solution Items" folder for the root-level files plus the `Microservices` project.
 - `Microservices/Microservices.shproj` + `.projitems` — a C# shared project (`HasSharedItems`, root namespace `Microservices`) used only to surface the Rust files in Solution Explorer.

@@ -29,7 +29,7 @@ jobs:
       crates: ${{ steps.detect.outputs.crates }}
       any: ${{ steps.detect.outputs.any }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0 # affected-crates.sh diffs against the base commit
 
@@ -57,7 +57,7 @@ jobs:
     name: fmt + clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup-rust
         with:
           cache-key: lint
@@ -77,15 +77,21 @@ jobs:
       matrix:
         crate: ${{ fromJSON(needs.affected.outputs.crates) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup-rust
         with:
           tools: cargo-nextest
           cache-key: test
-      - run: cargo nextest run --profile ci -p ${{ matrix.crate }} --all-features
+      # The crate name goes through the environment rather than being
+      # interpolated into the shell command. It comes from cargo metadata so it
+      # is safe today, but ${{ }} inside a run block is a template-injection
+      # shape, and zizmor flags it as one.
+      - env:
+          CRATE: ${{ matrix.crate }}
+        run: cargo nextest run --profile ci -p "$CRATE" --all-features
       - name: Upload JUnit report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: junit-${{ matrix.crate }}
           path: target/nextest/ci/junit.xml
@@ -97,7 +103,7 @@ jobs:
     if: needs.affected.outputs.any == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup-rust
         with:
           components: llvm-tools-preview
@@ -112,7 +118,7 @@ jobs:
       - name: Summarise
         if: always()
         run: cargo llvm-cov report --summary-only >> "$GITHUB_STEP_SUMMARY" || true
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: coverage-lcov
@@ -123,8 +129,8 @@ jobs:
     name: cargo-deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
         with:
           command: check advisories bans licenses sources
 
