@@ -55,17 +55,23 @@ Four controls, split by whether they work on a private repository.
      run: cargo nextest run -p "$CRATE"
    ```
 
-3. **CodeQL is gated, not deleted.** `if: github.event.repository.visibility == 'public'`.
+3. **Every `actions/checkout` sets `persist-credentials: false`.** By default
+   checkout writes the job's `GITHUB_TOKEN` into `.git/config`, where anything
+   that uploads or packages the workspace carries it out with it — including a
+   Docker build context. No job here pushes with git, so the credential is
+   never needed. zizmor calls this `artipacked` and fails on it.
+
+4. **CodeQL is gated, not deleted.** `if: github.event.repository.visibility == 'public'`.
    Code scanning needs GitHub Advanced Security, which user-owned private
    repositories cannot have. The job skips, and `Security OK` treats skipped as
    success. Make the repo public and it starts running with no edit here.
 
-4. **Trivy scans the locally loaded image, not a pushed one.** `build-push-action`
+5. **Trivy scans the locally loaded image, not a pushed one.** `build-push-action`
    has `load: true` so the image exists in the runner's daemon even on a pull
    request, where nothing is pushed. Scanning a registry reference instead would
    mean the scan only ever ran *after* publishing.
 
-5. **`ignore-unfixed: true` on Trivy is deliberate.** A CVE with no available
+6. **`ignore-unfixed: true` on Trivy is deliberate.** A CVE with no available
    patch is not actionable in a build gate; leaving those in produces a red
    check that everyone learns to ignore. Advisories against Rust crates are
    cargo-deny's job, not Trivy's.

@@ -39,6 +39,8 @@ jobs:
         language: [rust, actions]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Initialise CodeQL
         uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
@@ -61,6 +63,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       # zizmor audits the workflows themselves: unpinned actions, injectable
       # ${{ }} interpolation inside run blocks, over-broad permissions,
@@ -78,6 +82,9 @@ jobs:
           # Whole history: a secret committed and later removed is still a
           # leaked secret, and is invisible to a shallow checkout.
           fetch-depth: 0
+          # Especially here: this job scans the checkout for secrets, and the
+          # token checkout leaves in .git/config is exactly such a secret.
+          persist-credentials: false
 
       # GitHub's own secret scanning needs Advanced Security on a private repo.
       # gitleaks is the part that works regardless. Installed from a pinned

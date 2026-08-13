@@ -32,6 +32,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0 # affected-crates.sh diffs against the base commit
+          # checkout writes the job token into .git/config by default, where
+          # anything that uploads the workspace would leak it. Nothing here
+          # pushes with git, so it is never needed.
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-rust
         with:
@@ -58,6 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-rust
         with:
           cache-key: lint
@@ -78,6 +84,8 @@ jobs:
         crate: ${{ fromJSON(needs.affected.outputs.crates) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-rust
         with:
           tools: cargo-nextest
@@ -104,6 +112,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-rust
         with:
           components: llvm-tools-preview
@@ -130,6 +140,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
         with:
           command: check advisories bans licenses sources
