@@ -1,0 +1,124 @@
+name: Image
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+    # Per-crate tags, the shape release-plz produces (e.g. echo-service-v0.2.0).
+    tags: ["*-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  discover:
+    name: Discover services
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      any: ${{ steps.detect.outputs.any }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: metadata
+      - id: detect
+        run: |
+          services="$(.github/scripts/binary-crates.sh)"
+          echo "Services: $services"
+          echo "services=$services" >> "$GITHUB_OUTPUT"
+          if [ "$services" = "[]" ]; then any=false; else any=true; fi
+          echo "any=$any" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: image (${{ matrix.service }})
+    needs: discover
+    if: needs.discover.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push the image and its attestation to GHCR
+      id-token: write # OIDC token proving which workflow built it
+      attestations: write # write to GitHub's attestation store
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.discover.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v4
+
+      # GHCR rejects any uppercase character in a repository name, and this
+      # org/repo has several. Never interpolate github.repository directly.
+      - name: Compute image name
+        id: name
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          owner_repo="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner_repo}/${SERVICE}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,format=long
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          build-args: SERVICE=${{ matrix.service }}
+          # A PR builds to prove the Dockerfile still works; it must not publish.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=image-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.service }}
+          provenance: false # GitHub's attestation below replaces BuildKit's
+
+      # Signs "this digest came from this workflow, repo, and commit", and
+      # stores it next to the image. Verify with:
+      #   gh attestation verify oci://<image>:<tag> --repo <owner>/<repo>
+      - name: Attest build provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ steps.name.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  # Single required status check for this workflow, same reasoning as CI OK.
+  image-ok:
+    name: Image OK
+    if: always()
+    needs: [discover, image]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every upstream job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS"
+          jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<<"$RESULTS" > /dev/null

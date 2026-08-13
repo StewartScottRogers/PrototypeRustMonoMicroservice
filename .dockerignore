@@ -1,0 +1,13 @@
+# Keep the build context small: it is sent to the daemon on every build, and
+# a stale host target/ directory would also poison the container's cache.
+target/
+.git/
+.github/
+.claude/
+.vs/
+data/
+*.cmd
+*.slnx
+**/*.shproj
+**/*.projitems
+**/*.md
