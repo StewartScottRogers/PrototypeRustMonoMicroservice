@@ -1,0 +1,48 @@
+name: Setup Rust
+description: >
+  Install the toolchain named in rust-toolchain.toml, restore the cargo cache,
+  and install cargo tools. Every Rust job starts with this so a toolchain or
+  cache change lands in one file.
+
+inputs:
+  components:
+    description: Extra rustup components, comma separated (e.g. llvm-tools-preview).
+    required: false
+    default: ""
+  tools:
+    description: Cargo tools to install via taiki-e/install-action, comma separated.
+    required: false
+    default: ""
+  cache-key:
+    description: >
+      Cache-key suffix. Jobs that build with different flags (test vs coverage)
+      must pass different values or they thrash a shared cache entry.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install toolchain
+      shell: bash
+      env:
+        COMPONENTS: ${{ inputs.components }}
+      run: |
+        # No toolchain argument: rustup reads rust-toolchain.toml (rustup >= 1.28).
+        rustup toolchain install --no-self-update || rustup show active-toolchain
+        if [ -n "$COMPONENTS" ]; then
+          rustup component add ${COMPONENTS//,/ }
+        fi
+        rustc --version
+        cargo --version
+
+    - name: Restore cargo cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ inputs.cache-key }}
+
+    - name: Install cargo tools
+      if: inputs.tools != ''
+      uses: taiki-e/install-action@v2
+      with:
+        tool: ${{ inputs.tools }}

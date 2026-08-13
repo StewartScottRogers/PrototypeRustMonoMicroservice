@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # One PR for the whole workspace: versions live in the root [workspace.dependencies].
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Keeps the actions used by ci.yml current, and is the mechanism that will
+  # maintain SHA pins once the actions are pinned by digest.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]

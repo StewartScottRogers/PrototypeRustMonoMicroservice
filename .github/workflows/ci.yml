@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  pull_request:
+  # Required: without merge_group the checks never report inside the merge
+  # queue and every queued PR times out.
+  merge_group:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Never cancel a merge-queue or master run — only superseded PR pushes.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  affected:
+    name: Affected crates
+    runs-on: ubuntu-latest
+    outputs:
+      crates: ${{ steps.detect.outputs.crates }}
+      any: ${{ steps.detect.outputs.any }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # affected-crates.sh diffs against the base commit
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: metadata
+
+      - id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            crates="$(.github/scripts/affected-crates.sh "$BASE")"
+          else
+            # Merge queue and master validate the merged result, so test all of it.
+            crates="$(cargo metadata --format-version 1 --no-deps | jq -c '[.packages[].name] | sort')"
+          fi
+          echo "Affected: $crates"
+          echo "crates=$crates" >> "$GITHUB_OUTPUT"
+          if [ "$crates" = "[]" ]; then any=false; else any=true; fi
+          echo "any=$any" >> "$GITHUB_OUTPUT"
+
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: lint
+      - run: cargo fmt --all --check
+      # Workspace-wide on purpose: a lint regression in an untouched crate is
+      # still a lint regression. Narrow this to the affected matrix only if it
+      # becomes the slowest job.
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  test:
+    name: test (${{ matrix.crate }})
+    needs: affected
+    if: needs.affected.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJSON(needs.affected.outputs.crates) }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-rust
+        with:
+          tools: cargo-nextest
+          cache-key: test
+      - run: cargo nextest run --profile ci -p ${{ matrix.crate }} --all-features
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-${{ matrix.crate }}
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: ignore
+
+  coverage:
+    name: coverage
+    needs: affected
+    if: needs.affected.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: llvm-tools-preview
+          tools: cargo-llvm-cov,cargo-nextest
+          cache-key: coverage # instrumented build: must not share the test cache
+      - name: Measure coverage
+        run: |
+          cargo llvm-cov nextest \
+            --workspace --all-features \
+            --lcov --output-path lcov.info \
+            --fail-under-lines 60
+      - name: Summarise
+        if: always()
+        run: cargo llvm-cov report --summary-only >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-lcov
+          path: lcov.info
+          if-no-files-found: ignore
+
+  supply-chain:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans licenses sources
+
+  # The single required status check. Branch protection points at this job and
+  # nothing else, because path-filtered jobs report "skipped" and a skipped
+  # required check never reports at all — which wedges the merge queue.
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [affected, lint, test, coverage, supply-chain]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every upstream job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS"
+          jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<<"$RESULTS" > /dev/null

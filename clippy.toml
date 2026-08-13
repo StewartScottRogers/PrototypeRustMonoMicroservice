@@ -1,0 +1,4 @@
+# unwrap_used / expect_used are denied in the workspace lint table; tests are
+# allowed to use them so assertions stay readable.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

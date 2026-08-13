@@ -1,0 +1,10 @@
+[profile.ci]
+# Retry twice before calling a test failed — a flaky required check stalls the
+# merge queue, and the retry count shows up in the run summary either way.
+retries = 2
+fail-fast = false
+failure-output = "immediate-final"
+status-level = "skip"
+
+[profile.ci.junit]
+path = "junit.xml"

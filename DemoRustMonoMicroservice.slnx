@@ -2,7 +2,11 @@
   <Folder Name="/Solution Items/">
     <File Path=".gitattributes" />
     <File Path=".gitignore" />
+    <File Path="CLAUDE.md" />
     <File Path="hrdrClaudeNative.cmd" />
     <File Path="README.md" />
+    <File Path="RunClaude.cmd" />
   </Folder>
+  <Project Path="data/data.shproj" Id="643f1492-a899-443a-9489-b81691631fa6" />
+  <Project Path="Microservices/Microservices.shproj" Id="4f9db47a-6247-472e-946d-11adaef212fe" />
 </Solution>
