@@ -58,7 +58,12 @@ while :; do
     [ "$grew" -eq 0 ] && break
 done
 
-if [ "${#affected[@]}" -eq 0 ]; then
+# The `+x` test must come first. Under `set -u`, expanding ${#affected[@]} on an
+# associative array that was declared but never assigned is an "unbound
+# variable" error, not a zero - so the length check cannot be the first thing
+# that touches the array. This is the docs-only-change path: a PR that edits no
+# crate produces an empty set and an empty matrix.
+if [ -z "${affected[*]+x}" ]; then
     echo '[]'
 else
     printf '%s\n' "${!affected[@]}" | jq -Rc --slurp 'split("\n") | map(select(length > 0)) | sort'

@@ -51,14 +51,24 @@ Name the concept so it can be looked up later ("this is the *turbofish*", "`?` r
 
 **All Rust microservices live under `Microservices/`** — crates in there, never sibling top-level directories.
 
-Keeping the solution current is a **two-file** job, and it is easy to do only half of it:
+The solution is six shared projects plus one plain folder. **Every new file must be registered in the matching `.projitems`**, or it is invisible in Visual Studio even though it is committed and working:
 
-| New file lives in | Register it in | How |
-| --- | --- | --- |
-| `Microservices/…` | `Microservices/Microservices.projitems` | `<None Include="$(MSBuildThisFileDirectory)…" />` |
-| Anywhere else (repo root, `.github/`, `.claude/`) | `DemoRustMonoMicroservice.slnx` | `<File Path="…" />` inside the right `<Folder>` |
+| New file lives in | Register it in |
+| --- | --- |
+| `Microservices/…` | `Microservices/Microservices.projitems` |
+| Cargo config at the repo root | `Cargo/Cargo.projitems` |
+| `compose.yaml`, `Dockerfile`, `Dev*.cmd` | `DevEnvironment/DevEnvironment.projitems` |
+| `.github/…` | `GitHub/GitHub.projitems` |
+| `.claude/skills/…` | `AgentSkills/AgentSkills.projitems` |
+| Loose repo metadata (`README.md`, `.gitignore`, launcher scripts) | `DemoRustMonoMicroservice.slnx`, in the `Solution Items` folder |
 
-The `.slnx` has folders for `Solution Items`, `Cargo`, `Dev Environment`, `GitHub`, and `Agent Skills`. A root-level file that is in neither place is invisible in Visual Studio even though it is committed and working.
+`AgentSkills/`, `Cargo/`, `DevEnvironment/` and `GitHub/` contain **only** a `.shproj` and a `.projitems` — no real files. They link upward with `$(MSBuildThisFileDirectory)..\…` and a `Link` attribute controlling the displayed name. The files themselves cannot move: cargo, rustup, Docker, GitHub Actions, and Claude Code each require their own fixed location. These projects are viewers, exactly like `Microservices.shproj`.
+
+Adding a file is still one line:
+
+```xml
+<None Include="$(MSBuildThisFileDirectory)..\newfile.toml" Link="newfile.toml" />
+```
 
 **Every `.rs` file must be registered in `Microservices/Microservices.projitems`** as an inert `<None Include="…" />` item. A shared project only surfaces files listed in `.projitems`, so an unregistered file is invisible in Solution Explorer. Adding or removing a Rust file is a two-step operation: change the file on disk *and* update `.projitems` in the same change. `<None>` items are never fed to the C# compiler, so this is display-only and cannot break a build.
 
