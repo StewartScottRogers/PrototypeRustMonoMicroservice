@@ -1,0 +1,34 @@
+# A Cargo.toml describes one crate. `[package]` is its identity, `[dependencies]`
+# is what it may `use`. Rust has no global include path: a crate can only see
+# crates listed here.
+[package]
+name = "gateway-service"
+description = "Front door for the stack: takes a request and calls echo-service over the internal network."
+# `x.workspace = true` inherits the value from the root Cargo.toml, so version
+# and licence are set once for the whole repository instead of per crate.
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+# Inherits the shared lint levels (for example: `unwrap()` is denied outside
+# tests). Without this line the crate would silently opt out of them.
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+# The shared library crate in this workspace. Cargo resolves it by path, so
+# there is no publishing step between changing it and using the change here.
+service-core.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+# Only compiled for `cargo test`, never linked into the shipped binary.
+[dev-dependencies]
+http-body-util.workspace = true
+tower.workspace = true

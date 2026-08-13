@@ -7,8 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A Cargo workspace and a GitHub Actions CI gate exist; there are no C# sources.
 
 - `Cargo.toml` — virtual workspace manifest at the repo root, `members = ["Microservices/*"]`. Dependency versions and lint levels live here; crates opt in with `dep.workspace = true` and `[lints] workspace = true`.
-- `Microservices/service-core` — shared library: health probes, tracing setup.
+- `Microservices/service-core` — shared library: health probes, self-probe for container healthchecks, env config, tracing setup.
 - `Microservices/echo-service` — reference binary service (axum + tokio). Copy it to start a new service.
+- `Microservices/gateway-service` — front door; `POST /relay` forwards to `echo-service` over the compose network.
+- `compose.yaml` + `Dev*.cmd` — the local development stack (both services, Postgres, Redis). See `.claude/skills/dev-environment/SKILL.md`.
 - `.github/workflows/ci.yml` + `.github/actions/setup-rust` + `.github/scripts/affected-crates.sh` — the CI gate. Rules and failure modes are documented in `.claude/skills/rust-ci-gate/SKILL.md`; read that before changing CI.
 - `Dockerfile` + `.github/workflows/image.yml` — one parameterised image build for every service, published to GHCR with a provenance attestation. See `.claude/skills/rust-service-image/SKILL.md`.
 - `rust-toolchain.toml`, `clippy.toml`, `deny.toml`, `.config/nextest.toml` — tool config, all at the workspace root.
@@ -28,9 +30,22 @@ cargo run -p echo-service            # PORT=8080 by default
 
 docker build --build-arg SERVICE=echo-service -t echo-service:local .
 docker run --rm -p 8080:8080 echo-service:local
+
+DevStart.cmd     # whole stack: both services + Postgres + Redis
+DevStatus.cmd    # what is running, and is it healthy
+DevLogs.cmd      # follow logs
+DevStop.cmd      # stop, keep everything
+DevDelete.cmd    # remove containers, keep images and data
+DevRemove.cmd    # remove everything, including database volumes
 ```
 
 CI runs the same commands, plus `cargo nextest run --profile ci`, `cargo llvm-cov`, and `cargo deny check`.
+
+## Rust code is written for a Rust beginner
+
+The owner of this repo is new to Rust. **Every `.rs` file and `Cargo.toml` must explain the language concepts it uses**, not just the business logic: ownership and borrowing (`&`, `.clone()`, `move`), `Result`/`Option` and `?`, traits and `#[derive(...)]`, `async`/`await`, attribute macros like `#[tokio::main]`, lifetimes such as `&'static str`, and why a field is `String` rather than `&str`.
+
+Name the concept so it can be looked up later ("this is the *turbofish*", "`?` returns early with the error"). Prefer doc comments (`///`, `//!`) on public items so `cargo doc --open` produces a usable manual. This overrides the usual "match the surrounding comment density" instinct — here the language itself is the unfamiliar part, so idiomatic code that an experienced Rust reader would find obvious still needs a comment.
 
 ## Where Rust code goes
 
