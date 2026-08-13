@@ -3,6 +3,9 @@
 ###############################################################################
 * text=auto
 
+# Shell scripts run on Linux CI runners; a CRLF shebang is a "bad interpreter" error.
+*.sh text eol=lf
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

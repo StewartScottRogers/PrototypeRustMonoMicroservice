@@ -1,0 +1,7 @@
+[toolchain]
+# CI installs whatever this file names, so local and CI cannot drift.
+# Hardening step for later: pin an exact version (e.g. "1.97.0") and let a
+# scheduled workflow bump it — Dependabot does not track this file.
+channel = "stable"
+profile = "minimal"
+components = ["clippy", "rustfmt"]

@@ -4,11 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This is a greenfield prototype. **There is no application code yet** — no Rust crates, no `Cargo.toml`, no C# sources. What exists is scaffolding:
+A Cargo workspace and a GitHub Actions CI gate exist; there are no C# sources.
 
+- `Cargo.toml` — virtual workspace manifest at the repo root, `members = ["Microservices/*"]`. Dependency versions and lint levels live here; crates opt in with `dep.workspace = true` and `[lints] workspace = true`.
+- `Microservices/service-core` — shared library: health probes, tracing setup.
+- `Microservices/echo-service` — reference binary service (axum + tokio). Copy it to start a new service.
+- `.github/workflows/ci.yml` + `.github/actions/setup-rust` + `.github/scripts/affected-crates.sh` — the CI gate. Rules and failure modes are documented in `.claude/skills/rust-ci-gate/SKILL.md`; read that before changing CI.
+- `rust-toolchain.toml`, `clippy.toml`, `deny.toml`, `.config/nextest.toml` — tool config, all at the workspace root.
 - `DemoRustMonoMicroservice.slnx` — Visual Studio solution (XML `.slnx` format, not `.sln`). Holds a "Solution Items" folder for the root-level files plus the `Microservices` project.
-- `Microservices/Microservices.shproj` + `.projitems` — an **empty C# shared project** (`HasSharedItems`, root namespace `Microservices`). A shared project contributes no build output of its own; its `.projitems` `<ItemGroup>` is currently empty, and referencing projects would compile its files into themselves.
+- `Microservices/Microservices.shproj` + `.projitems` — a C# shared project (`HasSharedItems`, root namespace `Microservices`) used only to surface the Rust files in Solution Explorer.
 - `hrdrClaudeNative.cmd`, `RunClaude.cmd` — agent launcher scripts (see below).
+
+## Commands
+
+Run from the repo root. `cargo` is not on PATH on this machine; it is at `~/.cargo/bin`.
+
+```
+cargo test --workspace --all-features
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo run -p echo-service            # PORT=8080 by default
+```
+
+CI runs the same commands, plus `cargo nextest run --profile ci`, `cargo llvm-cov`, and `cargo deny check`.
 
 ## Where Rust code goes
 

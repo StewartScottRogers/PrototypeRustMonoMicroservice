@@ -1,0 +1,42 @@
+# Virtual workspace manifest. It defines no crate of its own — every crate lives
+# under Microservices/, per CLAUDE.md. Keeping the manifest at the repo root is
+# what lets `cargo` and the CI workflow run without a working-directory dance.
+[workspace]
+resolver = "3"
+members = ["Microservices/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+repository = "https://github.com/StewartScottRogers/PrototypeRustMonoMicroservice"
+
+# Single source of truth for dependency versions. Crates opt in with
+# `dep.workspace = true`, so a bump happens in one place and Dependabot files
+# one PR instead of one per crate.
+[workspace.dependencies]
+service-core = { path = "Microservices/service-core" }
+
+anyhow = "1"
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"
+todo = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

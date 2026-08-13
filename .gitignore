@@ -371,4 +371,11 @@ target/
 /data/*.db-shm
 /data/*.db-wal
 
+# Rust — the GitHub VisualStudio template does not cover any of this.
+/target/
+**/*.rs.bk
+*.pdb
+# Cargo.lock IS committed: this workspace ships binaries, not libraries.
+
+
 
