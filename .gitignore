@@ -365,5 +365,4 @@ FodyWeavers.xsd
 # Rust build artifacts (cargo), at any depth
 target/
 
-# Local runtime state (Cipher MCP session store)
-/data/
+
