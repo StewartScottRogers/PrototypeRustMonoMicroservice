@@ -61,8 +61,13 @@
 
   .stage{position:relative;min-width:0;min-height:0;background:var(--void)}
   iframe{width:100%;height:100%;border:0;display:block;background:var(--void)}
+  /* Bottom right, not top right.
+     Every tool framed here puts something in its own top-right corner - the
+     mimic panel its freshness indicators, Grafana its time picker, Jaeger its
+     search controls - so a button floating there covers the one part of the
+     page the reader most needs. The bottom corner is empty on all five. */
   .pop{
-    position:absolute;top:.6rem;right:.85rem;z-index:3;
+    position:absolute;bottom:.85rem;right:.85rem;z-index:3;
     background:rgba(13,21,28,.92);border:1px solid var(--edge-hi);color:var(--dim);
     font-family:inherit;font-size:.7rem;padding:.35rem .6rem;text-decoration:none;
   }
