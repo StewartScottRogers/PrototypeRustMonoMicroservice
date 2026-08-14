@@ -15,8 +15,9 @@ Thirteen containers: six services, NATS, Postgres, Redis, Jaeger, Prometheus, Gr
 
 | What | Where |
 | --- | --- |
+| **Console — everything in one page** | **http://localhost:8090** (`DevConsole.cmd`) |
 | Gateway | http://localhost:8080 |
-| **Live mimic panel** | **http://localhost:8090** |
+| Mimic panel alone | http://localhost:8090/mimic |
 | Grafana dashboard | http://localhost:3000 (no login) |
 | Jaeger traces | http://localhost:16686 |
 | Prometheus | http://localhost:9090 |
@@ -47,6 +48,19 @@ Run these from anywhere; each one `pushd`s to the repo root first.
 | `DevRemove.cmd [-y]` | Remove containers, network, built images, volumes | Nothing |
 | `DevDemo.cmd` | Run and narrate the whole demonstration | — |
 | `DevReplay.cmd [--dry-run]` | Put dead letters back on the queue | — |
+| `DevConsole.cmd` | Open every GUI in one framed page; starts the stack if needed | — |
+
+**Grafana must be told it may be embedded.** It sends `X-Frame-Options: deny`
+by default, so the console's Grafana tab comes up blank with nothing in the UI
+to explain why. `GF_SECURITY_ALLOW_EMBEDDING: "true"` in `compose.yaml` is what
+makes it work — correct for a local demo, and a clickjacking hole on anything
+reachable from outside.
+
+The console's external tab URLs come from `/api/links`, populated from
+`GRAFANA_URL`, `JAEGER_URL` and `PROMETHEUS_UI_URL` in compose. Those are
+*published host ports* — the page renders in your browser, so a container name
+would not resolve, and hardcoding 3000 breaks the moment someone sets
+`GRAFANA_PORT`.
 
 `DevRemove.cmd` prompts for confirmation because it deletes the Postgres and
 Redis volumes. Pass `-y` to skip the prompt in a script.

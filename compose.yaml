@@ -240,6 +240,12 @@ services:
       PORT: 8080
       PROMETHEUS_URL: http://prometheus:9090
       NATS_MONITOR_URL: http://nats:8222
+      # Where the *browser* should go, not where this service should. The page
+      # renders on your machine, so these are published host ports and must
+      # track the same defaults used to publish them above.
+      GRAFANA_URL: http://localhost:${GRAFANA_PORT:-3000}
+      JAEGER_URL: http://localhost:${JAEGER_UI_PORT:-16686}
+      PROMETHEUS_UI_URL: http://localhost:${PROMETHEUS_PORT:-9090}
     ports:
       - "${MIMIC_PORT:-8090}:8080"
     depends_on:
@@ -280,6 +286,11 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # Grafana sends `X-Frame-Options: deny` by default, so the console's
+      # Grafana tab would come up blank. Safe on a local demo with no real
+      # data; on anything reachable it re-opens the clickjacking hole that
+      # header exists to close.
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
       # Opens straight on the dashboard rather than an empty home page.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/orders.json
     ports:

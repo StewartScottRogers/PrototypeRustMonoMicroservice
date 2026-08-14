@@ -22,7 +22,7 @@ Services:
 - `Microservices/dlq-replay` — one-shot tool that puts dead letters back on the queue. Run with `DevReplay.cmd`, never automatically.
 - `Microservices/echo-service` — the original synchronous HTTP example. Copy it to start a simple service.
 
-- `Microservices/mimic-service` — a live control-room panel of the whole stack at `http://localhost:8090`, driven by Prometheus and the NATS monitoring endpoint. Shows *shape* — which component is amber and what sits downstream — which a row of graphs cannot.
+- `Microservices/mimic-service` — the console at `http://localhost:8090`: one page framing the live mimic panel, the walkthrough, Grafana, Jaeger and Prometheus, with a status strip driven by Prometheus and the NATS monitoring endpoint. `DevConsole.cmd` opens it. Shows *shape* — which component is amber and what sits downstream — which a row of graphs cannot.
 - `observability/` — Prometheus scrape config and Grafana provisioning. Dashboards live in version control, not in Grafana's database, so a panel change is reviewable in a PR.
 - `compose.yaml` + `Dev*.cmd` — the local stack: 6 services, NATS, Jaeger, Prometheus, Grafana, Postgres, Redis. Grafana on :3000, Jaeger on :16686. `DevDemo.cmd` narrates the whole demonstration. See `.claude/skills/dev-environment/SKILL.md` and `.claude/skills/messaging-and-eventing/SKILL.md`.
 - `.github/workflows/ci.yml` + `.github/actions/setup-rust` + `.github/scripts/affected-crates.sh` — the CI gate. Rules and failure modes are documented in `.claude/skills/rust-ci-gate/SKILL.md`; read that before changing CI.
@@ -49,6 +49,7 @@ docker run --rm -p 8080:8080 echo-service:local
 DevStart.cmd     # whole stack: 5 services + NATS + Jaeger + Postgres + Redis
 DevDemo.cmd      # run and narrate the whole demonstration
 DevReplay.cmd    # put dead letters back on the queue (--dry-run to look first)
+DevConsole.cmd   # open every GUI in one page; starts the stack if it is down
 DevStatus.cmd    # what is running, and is it healthy
 DevLogs.cmd      # follow logs
 DevStop.cmd      # stop, keep everything
