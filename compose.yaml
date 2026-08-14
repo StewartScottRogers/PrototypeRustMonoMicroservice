@@ -252,6 +252,7 @@ services:
       # Where the *browser* should go, not where this service should. The page
       # renders on your machine, so these are published host ports and must
       # track the same defaults used to publish them above.
+      GATEWAY_URL: http://localhost:${GATEWAY_PORT:-8080}
       GRAFANA_URL: http://localhost:${GRAFANA_PORT:-3000}
       JAEGER_URL: http://localhost:${JAEGER_UI_PORT:-16686}
       PROMETHEUS_UI_URL: http://localhost:${PROMETHEUS_PORT:-9090}

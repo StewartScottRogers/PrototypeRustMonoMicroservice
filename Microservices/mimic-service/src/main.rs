@@ -64,6 +64,13 @@ const PANEL_HTML: &str = include_str!("../assets/panel.html");
 /// The console shell that frames every tool.
 const CONSOLE_HTML: &str = include_str!("../assets/console.html");
 
+/// The traffic generators, shown in the console's sidebar.
+///
+/// Served from here rather than written into the console page, so it can also
+/// be opened on its own, and so the console keeps *framing* things rather than
+/// containing them.
+const GENERATORS_HTML: &str = include_str!("../assets/generators.html");
+
 /// The written walkthrough, served so the console can frame it.
 ///
 /// A `file://` link would work on this machine only, and could not be framed
@@ -152,6 +159,8 @@ async fn main() -> Result<()> {
         jaeger: std::env::var("JAEGER_URL").unwrap_or_else(|_| "http://localhost:16686".to_owned()),
         prometheus: std::env::var("PROMETHEUS_UI_URL")
             .unwrap_or_else(|_| "http://localhost:9090".to_owned()),
+        gateway: std::env::var("GATEWAY_URL")
+            .unwrap_or_else(|_| "http://localhost:8080".to_owned()),
     };
 
     let app = Router::new()
@@ -159,6 +168,7 @@ async fn main() -> Result<()> {
         .route("/", get(console))
         .route("/mimic", get(panel))
         .route("/docs", get(docs))
+        .route("/generators", get(generators))
         .route("/api/state", get(state))
         // Registered *before* `.with_state`. Adding a stateful route after that
         // line produces one of axum's long "the trait Handler is not
@@ -239,6 +249,12 @@ struct Links {
     grafana: String,
     jaeger: String,
     prometheus: String,
+    /// Where the *browser* should post generated traffic.
+    ///
+    /// A published host port like the rest, not the compose network name: the
+    /// generator runs in the reader's browser, so a container name would not
+    /// resolve there.
+    gateway: String,
 }
 
 /// Serves the console shell that frames everything.
@@ -254,6 +270,15 @@ async fn panel() -> Html<&'static str> {
 /// Serves the written walkthrough.
 async fn docs() -> Html<&'static str> {
     Html(DOCS_HTML)
+}
+
+/// Serves the traffic generators.
+///
+/// The console frames this in its sidebar rather than in the stage, so the
+/// mimic panel stays on screen while traffic is being driven into the stack.
+/// Watching the effect while causing it is the whole point.
+async fn generators() -> Html<&'static str> {
+    Html(GENERATORS_HTML)
 }
 
 /// Serves the current snapshot as JavaScript Object Notation.

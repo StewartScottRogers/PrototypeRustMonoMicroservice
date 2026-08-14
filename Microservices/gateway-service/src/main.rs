@@ -37,6 +37,7 @@ use orders::OrderState;
 use serde::{Deserialize, Serialize};
 use service_core::{health_routes, init_tracing, port_from_env, self_check};
 use std::net::SocketAddr;
+use tower_http::cors::CorsLayer;
 
 const SERVICE: &str = "gateway-service";
 const DEFAULT_PORT: u16 = 8080;
@@ -196,15 +197,46 @@ fn app(state: AppState, order_state: OrderState) -> Router {
         // so /metrics has to be merged explicitly. Forgetting it is silent -
         // the service runs perfectly and simply never appears in Prometheus.
         .merge(service_core::metrics_routes())
+        // A browser may call this gateway directly.
+        //
+        // # Why this layer has to exist
+        //
+        // The console is served from one port and this gateway listens on
+        // another, so a page there calling `POST /order` is a *cross-origin*
+        // request. A browser will not let a page read the answer to one unless
+        // the answering service says it may — and for a request carrying
+        // `Content-Type: application/json` the browser sends a preliminary
+        // `OPTIONS` question first and refuses to send the real request at all
+        // until it is answered. Without this layer the traffic generator in the
+        // console fails on its very first request, with an error that appears
+        // only in the browser's own console and never reaches this service.
+        //
+        // # Why it is permissive, and what a real deployment would do
+        //
+        // Permissive means any origin, which is right for a demonstration stack
+        // whose whole purpose is to be driven from a page on the same machine.
+        // A real deployment would name its front end explicitly with
+        // `CorsLayer::new().allow_origin("https://example.com".parse().unwrap())`,
+        // because "any origin may call this and read the answer" is a genuine
+        // decision rather than a default worth inheriting.
+        //
+        // The layer is applied last so it wraps *every* route above it,
+        // including the health and metrics endpoints.
+        .layer(CorsLayer::permissive())
 }
 
 /// The router used by the tests, which have no database.
+///
+/// It carries the same cross-origin layer as the real router, so a test can
+/// prove the layer is still there. Leaving it off would make this router
+/// unrepresentative in exactly the way that matters.
 #[cfg(test)]
 fn relay_only_app(state: AppState) -> Router {
     Router::new()
         .route("/relay", post(relay))
         .with_state(state)
         .merge(health_routes(SERVICE))
+        .layer(CorsLayer::permissive())
 }
 
 #[tokio::main]
@@ -296,6 +328,84 @@ mod tests {
     async fn body_text(response: axum::response::Response) -> String {
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    /// A browser must be allowed to call this gateway from another origin.
+    ///
+    /// # What breaks without this, and why nothing would notice
+    ///
+    /// The traffic generator is served by mimic-service on one port and posts
+    /// here on another, so every request it makes is cross-origin. Because
+    /// those requests carry a JavaScript Object Notation content type, the
+    /// browser asks permission first with an `OPTIONS` request and refuses to
+    /// send the real one until it is answered.
+    ///
+    /// Remove the layer and this service still passes every other test, still
+    /// answers curl perfectly, and still looks healthy on the panel. The only
+    /// symptom is an error inside the browser's own console that never reaches
+    /// a log, a metric or a test - which is precisely why this one exists.
+    #[tokio::test]
+    async fn a_browser_from_another_origin_is_allowed_to_ask() {
+        let upstream = start_stub_upstream(StatusCode::OK, r#"{"echo":"hi"}"#).await;
+        let state = AppState {
+            client: reqwest::Client::new(),
+            echo_url: upstream,
+        };
+
+        // The question a browser asks before sending the real request.
+        let preflight = Request::builder()
+            .method("OPTIONS")
+            .uri("/relay")
+            .header(header::ORIGIN, "http://localhost:8090")
+            .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = relay_only_app(state).oneshot(preflight).await.unwrap();
+
+        assert!(
+            response.status().is_success(),
+            "the preflight question was refused, so a browser would never send the real request"
+        );
+        assert!(
+            response
+                .headers()
+                .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+            "no allow-origin header, so the browser discards the answer"
+        );
+    }
+
+    /// And the answer to a real cross-origin request is readable.
+    ///
+    /// The preflight passing is not sufficient: without this header on the
+    /// actual response the browser receives the reply and then refuses to hand
+    /// it to the page, which reads as a network failure.
+    #[tokio::test]
+    async fn the_answer_to_a_cross_origin_request_is_readable() {
+        let upstream = start_stub_upstream(StatusCode::OK, r#"{"echo":"hi"}"#).await;
+        let state = AppState {
+            client: reqwest::Client::new(),
+            echo_url: upstream,
+        };
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/relay")
+            .header(header::ORIGIN, "http://localhost:8090")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(r#"{"message":"hello"}"#))
+            .unwrap();
+
+        let response = relay_only_app(state).oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            response
+                .headers()
+                .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+            "the page would be handed a network error instead of this answer"
+        );
     }
 
     #[tokio::test]

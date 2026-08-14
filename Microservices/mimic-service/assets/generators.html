@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traffic Generators — Order Platform</title>
+<style>
+  /* The same visual world as the panel and the walkthrough. This is a control
+     surface in the same room, not a separate tool. */
+  :root{
+    --void:#05080b; --ground:#080d12; --panel:#0d151c; --panel-2:#101a22;
+    --edge:#22333e; --edge-hi:#334c5c;
+    --ink:#c7d8e4; --dim:#6d8496; --far:#42555f;
+    --ok:#2fd98a; --warn:#ffb020; --fail:#ff4a4a;
+    --sync:#34c3e0; --async:#b07cff;
+    --mono:"Cascadia Mono",Consolas,"SF Mono",Menlo,"DejaVu Sans Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--void); color:var(--ink); font-family:var(--mono);
+    margin:0; padding:.7rem .75rem 1.5rem; font-size:.72rem; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h2{
+    font-size:.66rem; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--far); font-weight:500; margin:0 0 .5rem;
+  }
+  .group{margin-bottom:1rem}
+
+  /* ---- the running banner: always first, so it is never missed ---- */
+  .running{
+    display:none; border:1px solid var(--ok); background:#0f1a14;
+    padding:.5rem .6rem; margin-bottom:.9rem;
+  }
+  .running.on{display:block}
+  .running.hurting{border-color:var(--warn); background:#241703}
+  .running-what{color:var(--ok); font-size:.7rem}
+  .running.hurting .running-what{color:var(--warn)}
+  .running-stat{color:var(--dim); font-size:.66rem; margin-top:.25rem;
+                font-variant-numeric:tabular-nums}
+
+  button{
+    font-family:inherit; font-size:.7rem; color:var(--ink);
+    background:var(--panel); border:1px solid var(--edge-hi);
+    padding:.4rem .55rem; cursor:pointer; text-align:left; width:100%;
+  }
+  button:hover{border-color:var(--sync); color:#fff}
+  button:disabled{opacity:.4; cursor:not-allowed}
+  button.on{border-color:var(--sync); color:var(--sync); background:#0a1f28}
+
+  .stack{display:grid; gap:.3rem}
+  .stack.two{grid-template-columns:1fr 1fr}
+
+  /* The stop control is the one thing that must always be reachable. */
+  .stop{
+    border-color:var(--fail); color:var(--fail); background:#2a0f0f;
+    text-align:center; letter-spacing:.14em; text-transform:uppercase;
+  }
+  .stop:hover{border-color:var(--fail); color:#fff; background:#3d1414}
+
+  label{display:block; color:var(--dim); font-size:.64rem;
+        letter-spacing:.1em; text-transform:uppercase; margin:.5rem 0 .2rem}
+  input[type=number]{
+    font-family:inherit; font-size:.72rem; width:100%;
+    background:var(--void); color:var(--ink);
+    border:1px solid var(--edge); padding:.35rem .45rem;
+    font-variant-numeric:tabular-nums;
+  }
+  input:focus-visible,button:focus-visible{outline:2px solid var(--sync); outline-offset:1px}
+
+  /* Everything past this line is meant to hurt. It is marked rather than
+     prevented: breaking the stack on purpose is the point of the exercise. */
+  .danger-rule{
+    display:flex; align-items:center; gap:.5rem; margin:.9rem 0 .5rem;
+    color:var(--warn); font-size:.6rem; letter-spacing:.16em; text-transform:uppercase;
+  }
+  .danger-rule::before,.danger-rule::after{
+    content:""; flex:1; height:1px; background:var(--warn); opacity:.35;
+  }
+  .danger button{border-color:#5a3a08; color:var(--warn)}
+  .danger button:hover{border-color:var(--warn); background:#241703; color:#ffd27a}
+
+  .note{color:var(--far); font-size:.62rem; line-height:1.45; margin:.4rem 0 0}
+  .tally{
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:.3rem; margin-top:.5rem;
+    font-variant-numeric:tabular-nums;
+  }
+  .tally div{border:1px solid var(--edge); background:var(--panel); padding:.3rem .4rem}
+  .tally b{display:block; font-size:.85rem; font-weight:500; color:var(--ink)}
+  .tally span{font-size:.58rem; letter-spacing:.1em; text-transform:uppercase; color:var(--far)}
+  .tally .bad b{color:var(--fail)}
+</style>
+</head>
+<body>
+
+<!-- Always first. A generator running unnoticed is the one genuinely
+     dangerous state this page can be in. -->
+<div class="running" id="running">
+  <div class="running-what" id="running-what">—</div>
+  <div class="running-stat" id="running-stat">—</div>
+</div>
+
+<div class="group">
+  <h2>What to send</h2>
+  <div class="stack" id="actions"></div>
+  <p class="note" id="action-note">—</p>
+</div>
+
+<div class="group">
+  <h2>How to send it</h2>
+  <div class="stack two" id="shapes"></div>
+
+  <label for="rate">Requests per second</label>
+  <input type="number" id="rate" value="5" min="1" max="100000" step="1">
+
+  <label for="seconds">Seconds (0 runs until stopped)</label>
+  <input type="number" id="seconds" value="30" min="0" max="86400" step="1">
+
+  <div class="danger-rule">beyond here it will hurt</div>
+  <div class="stack danger" id="danger"></div>
+  <p class="note">
+    A browser will not exceed roughly a few hundred requests each second, whatever
+    is asked for here: it holds only about six connections open to one address.
+    That is enough to outrun the workers and build a backlog. It is not enough to
+    be unlimited.
+  </p>
+</div>
+
+<div class="group">
+  <button class="stop" id="stop">Stop everything</button>
+  <div class="tally">
+    <div><b id="t-sent">0</b><span>sent</span></div>
+    <div><b id="t-ok">0</b><span>accepted</span></div>
+    <div class="bad"><b id="t-fail">0</b><span>refused</span></div>
+  </div>
+</div>
+
+<script>
+  // ===========================================================================
+  // A traffic generator for the stack this console is watching.
+  //
+  // # Why this page is separate, and framed rather than inlined
+  //
+  // It lives in the console's sidebar rather than in the stage, so the mimic
+  // panel stays on screen while the knob is turned. Watching the effect while
+  // causing it is the entire point; a control that replaced the readout would
+  // be useless.
+  //
+  // # Why the requests go straight to the gateway
+  //
+  // The page is served from the mimic service and posts to the gateway, which
+  // is a different port and therefore a different origin. That works only
+  // because the gateway carries a permissive cross-origin layer - see the
+  // comment on it in gateway-service. Without that, every request here fails
+  // before it leaves the browser.
+  //
+  // # What this deliberately is not
+  //
+  // Not a benchmark. It reports what it sent and what came back and nothing
+  // more; the measurement is the panel beside it and Prometheus behind that.
+  // ===========================================================================
+
+  const GATEWAY = (new URLSearchParams(location.search).get("gateway"))
+    || "http://localhost:8080";
+
+  // The agreed item name that makes the worker fail. Matches
+  // messaging-core::contract::POISON_ITEM - if that constant ever changes, this
+  // string is the other half of the pair.
+  const POISON_ITEM = "poison";
+
+  // What each request does. Separate from the shape below: you pick one of
+  // each, so "poison orders, flooding" and "poison orders, once" are both
+  // reachable without a special case for either.
+  const ACTIONS = {
+    order: {
+      label: "Order",
+      note: "The full asynchronous path: gateway, outbox row in the same transaction, relay, broker, worker, then both subscribers.",
+      request: (n) => ({
+        path: "/order",
+        body: { item: "generated-" + n, quantity: 1 + (n % 3) },
+      }),
+    },
+    poison: {
+      label: "Poison order",
+      note: "An order the worker cannot process. Three attempts, then it is parked on the dead-letter stream and the panel raises an alarm.",
+      request: (n) => ({
+        path: "/order",
+        body: { item: POISON_ITEM, quantity: 1 },
+      }),
+    },
+    duplicate: {
+      label: "Duplicate order",
+      note: "The same order identifier every time. The gateway accepts each one; the worker must do the work only once. Watch orders accepted climb while orders processed does not.",
+      request: () => ({
+        path: "/order",
+        body: {
+          item: "repeated-order",
+          quantity: 1,
+          order_id: "11111111-2222-3333-4444-555555555555",
+        },
+      }),
+    },
+    relay: {
+      label: "Synchronous call",
+      note: "The simple example: gateway calls the echo service and waits. Nothing reaches the broker, so the flow lines stay dark and only the top band lights.",
+      request: (n) => ({ path: "/relay", body: { message: "generated-" + n } }),
+    },
+  };
+
+  // The shape of the traffic. Each returns a plan the scheduler runs.
+  const SHAPES = {
+    once:   { label: "Once",   danger: false, plan: () => ({ kind: "burst", count: 1 }) },
+    steady: { label: "Steady", danger: false, plan: (rate, secs) => ({ kind: "rate", rate, seconds: secs }) },
+    burst:  { label: "Burst",  danger: false, plan: (rate) => ({ kind: "burst", count: rate }) },
+    ramp:   { label: "Ramp",   danger: false, plan: (rate, secs) => ({ kind: "ramp", rate, seconds: secs || 30 }) },
+    flood:  { label: "Flood",  danger: true,  plan: (rate, secs) => ({ kind: "rate", rate: Math.max(rate, 500), seconds: secs }) },
+    max:    { label: "As fast as possible", danger: true, plan: () => ({ kind: "max" }) },
+  };
+
+  const byId = (id) => document.getElementById(id);
+
+  let action = "order";
+  let running = null;      // the timers and state of the current run
+  let sent = 0, ok = 0, failed = 0;
+  let inFlight = 0;
+
+  // A ceiling on requests in flight at once. Not a limit on the rate - it is
+  // what stops a browser that cannot keep up from growing an unbounded queue of
+  // pending promises and running out of memory before the stack ever bends.
+  const MAX_IN_FLIGHT = 512;
+
+  // ---- building the controls -------------------------------------------------
+
+  function renderActions() {
+    const host = byId("actions");
+    host.innerHTML = "";
+    for (const [key, spec] of Object.entries(ACTIONS)) {
+      const b = document.createElement("button");
+      b.textContent = spec.label;
+      b.className = key === action ? "on" : "";
+      b.onclick = () => { action = key; renderActions(); byId("action-note").textContent = spec.note; };
+      host.appendChild(b);
+    }
+    byId("action-note").textContent = ACTIONS[action].note;
+  }
+
+  function renderShapes() {
+    const safe = byId("shapes"), danger = byId("danger");
+    safe.innerHTML = ""; danger.innerHTML = "";
+    for (const [key, spec] of Object.entries(SHAPES)) {
+      const b = document.createElement("button");
+      b.textContent = spec.label;
+      b.onclick = () => start(key);
+      (spec.danger ? danger : safe).appendChild(b);
+    }
+  }
+
+  // ---- sending ---------------------------------------------------------------
+
+  async function fire() {
+    if (inFlight >= MAX_IN_FLIGHT) return;
+
+    const spec = ACTIONS[action];
+    const { path, body } = spec.request(sent);
+    sent += 1;
+    inFlight += 1;
+
+    try {
+      const response = await fetch(GATEWAY + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (response.ok) ok += 1; else failed += 1;
+      // The body is read and discarded so the connection is released back to
+      // the pool. Leaving it unread holds one of the six open.
+      await response.arrayBuffer().catch(() => {});
+    } catch {
+      // A refused or aborted request. Counted, never thrown: the whole point of
+      // the destructive settings is that these will happen.
+      failed += 1;
+    } finally {
+      inFlight -= 1;
+    }
+  }
+
+  // ---- the scheduler ---------------------------------------------------------
+
+  function start(shapeKey) {
+    stop();
+
+    const shape = SHAPES[shapeKey];
+    const rate = Math.max(1, Number(byId("rate").value) || 1);
+    const seconds = Math.max(0, Number(byId("seconds").value) || 0);
+    const plan = shape.plan(rate, seconds);
+    const startedAt = Date.now();
+
+    sent = 0; ok = 0; failed = 0;
+    running = { shape, plan, startedAt, timers: [], hurting: shape.danger };
+
+    if (plan.kind === "burst") {
+      for (let i = 0; i < plan.count; i += 1) fire();
+      // A burst has no duration; show the banner briefly then clear it.
+      running.timers.push(window.setTimeout(stop, 1200));
+    }
+
+    if (plan.kind === "rate" || plan.kind === "ramp") {
+      // Ten slices a second, so a steady rate arrives spread out rather than in
+      // one clump per second - a clump would be a burst wearing a steady label.
+      const slice = 100;
+
+      // The rate is derived from ELAPSED TIME, never from the number of times
+      // this timer has fired.
+      //
+      // Counting per tick looks equivalent and is not. A browser throttles
+      // timers in a background tab to roughly once a second, so a per-tick
+      // accumulator adding "rate divided by ten" would deliver a tenth of what
+      // was asked for the moment the tab lost focus - silently, with the
+      // display still claiming the requested rate. Measured here at five per
+      // second: six seconds produced three requests instead of thirty.
+      //
+      // Working from "how many should have gone by now, minus how many have"
+      // is self-correcting. A late timer catches up, a throttled one catches up
+      // when the tab returns, and a machine too busy to keep up simply falls
+      // behind honestly rather than quietly redefining the rate.
+      running.timers.push(window.setInterval(() => {
+        const elapsed = (Date.now() - startedAt) / 1000;
+
+        if (plan.seconds && elapsed >= plan.seconds) { stop(); return; }
+
+        // The integral of the rate over the time so far. For a steady rate that
+        // is rate times elapsed; for a ramp climbing linearly to `rate` over
+        // `seconds`, it is the area under that slope.
+        const owed = plan.kind === "ramp"
+          ? (plan.rate * Math.min(elapsed, plan.seconds) ** 2) / (2 * plan.seconds)
+          : plan.rate * elapsed;
+
+        // Bounded per slice. Without this a tab returning from ten minutes of
+        // background throttling would try to send every request it "owed" all
+        // at once, which is a denial-of-service attack on your own browser.
+        let toSend = Math.min(Math.floor(owed) - sent, 2000);
+        while (toSend > 0) { fire(); toSend -= 1; }
+      }, slice));
+    }
+
+    if (plan.kind === "max") {
+      // No timer at all. Keep the in-flight window full and let the browser's
+      // own connection limit set the rate. This is the fastest this page can
+      // possibly go.
+      running.timers.push(window.setInterval(() => {
+        while (inFlight < MAX_IN_FLIGHT) fire();
+      }, 10));
+    }
+
+    paint();
+  }
+
+  function stop() {
+    if (running) for (const t of running.timers) { clearInterval(t); clearTimeout(t); }
+    running = null;
+    paint();
+  }
+
+  function paint() {
+    const banner = byId("running");
+    banner.className = "running" + (running ? " on" : "") + (running && running.hurting ? " hurting" : "");
+
+    if (running) {
+      const secs = Math.floor((Date.now() - running.startedAt) / 1000);
+      byId("running-what").textContent =
+        ACTIONS[action].label + " · " + running.shape.label;
+      byId("running-stat").textContent =
+        secs + "s · " + sent + " sent · " + inFlight + " in flight";
+    }
+
+    // The console frames this page and cannot read across the origin boundary,
+    // so the running state is announced rather than exposed.
+    if (window.parent !== window) {
+      window.parent.postMessage({ from: "generators", running: !!running }, "*");
+    }
+
+    byId("t-sent").textContent = sent;
+    byId("t-ok").textContent = ok;
+    byId("t-fail").textContent = failed;
+  }
+
+  // The console frames this page and offers its own stop control, which cannot
+  // reach in across origins except by message.
+  window.addEventListener("message", (event) => {
+    if (event.data === "stop-all") stop();
+  });
+
+  byId("stop").onclick = stop;
+  window.addEventListener("pagehide", stop);
+
+  renderActions();
+  renderShapes();
+  window.setInterval(paint, 250);
+</script>
+</body>
+</html>

@@ -14,7 +14,9 @@
     --ink:#c7d8e4; --dim:#6d8496; --far:#4a5f6e;
     --ok:#2fd98a; --warn:#ffb020; --fail:#ff4a4a; --unknown:#5a6b78;
     --mono:"Cascadia Mono",Consolas,"SF Mono",Menlo,"DejaVu Sans Mono",monospace;
-    --rail: 15rem;
+    /* Wider than a list of tabs needs, because the rail now also carries the
+       traffic generator controls. */
+    --rail: 17rem;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -56,6 +58,20 @@
   button.tab:focus-visible{outline:2px solid var(--ok);outline-offset:-2px}
   button.tab[aria-selected="true"]{background:var(--panel-2);border-color:var(--edge-hi);color:var(--ink)}
   button.tab .key{margin-left:auto;font-size:.68rem;color:var(--far)}
+  /* ---- the traffic generators, in the rail rather than the stage ----
+     Deliberately not a tab. A control that replaced the mimic panel would hide
+     the effect at the exact moment it was caused, and the whole value here is
+     turning the knob while watching the needle. */
+  .drive{border-top:1px solid var(--edge);margin-top:.6rem;display:flex;flex-direction:column;min-height:0}
+  .drive-head{
+    display:flex;align-items:baseline;gap:.5rem;
+    font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--far);
+    padding:.9rem .6rem .35rem;
+  }
+  .drive-head .live{margin-left:auto;color:var(--ok);display:none}
+  .drive-head .live.on{display:inline}
+  #drive{width:100%;border:0;background:var(--ground);display:block;height:31rem;min-height:24rem}
+
   .rail-foot{margin-top:auto;padding:.75rem .6rem;font-size:.65rem;line-height:1.6;color:var(--far);border-top:1px solid var(--edge)}
   .rail-foot a{color:var(--dim)}
 
@@ -129,6 +145,18 @@
   const $ = (id) => document.getElementById(id);
   let current = TABS[0];
 
+  // Where generated traffic is posted. Replaced by /api/links before the rail
+  // is built; the default only matters if that call fails.
+  let gatewayUrl = "http://localhost:8080";
+
+  // The generator lives in a frame of its own and cannot write to this page, so
+  // it reports what it is doing by message instead.
+  window.addEventListener("message", (event) => {
+    if (!event.data || event.data.from !== "generators") return;
+    const indicator = $("drive-live");
+    if (indicator) indicator.className = "live" + (event.data.running ? " on" : "");
+  });
+
   function buildRail() {
     const rail = $("rail");
     rail.innerHTML = "";
@@ -153,6 +181,17 @@
       button.addEventListener("click", () => select(tab));
       rail.append(button);
     });
+
+    // The generators live in the rail itself, built here so rebuilding the tab
+    // list never loses them.
+    const drive = document.createElement("div");
+    drive.className = "drive";
+    drive.innerHTML =
+      '<div class="drive-head"><span>Drive traffic</span>'
+      + '<span class="live" id="drive-live">running</span></div>'
+      + '<iframe id="drive" title="Traffic generators" src="/generators?gateway='
+      + encodeURIComponent(gatewayUrl) + '"></iframe>';
+    rail.append(drive);
 
     const foot = document.createElement("div");
     foot.className = "rail-foot";
@@ -216,6 +255,12 @@
     try {
       const links = await (await fetch("/api/links", { cache: "no-store" })).json();
       for (const tab of TABS) if (tab.key) tab.url = links[tab.key];
+
+      // The generator posts straight to the gateway, and only this service
+      // knows which host port compose published it on. Handed over in the
+      // frame's address because the two pages are different origins and cannot
+      // read each other's variables.
+      if (links.gateway) gatewayUrl = links.gateway;
     } catch {
       // Leave the external tabs without URLs; select() explains rather than
       // opening a broken frame.
