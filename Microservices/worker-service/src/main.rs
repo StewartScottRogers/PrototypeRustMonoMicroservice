@@ -16,6 +16,15 @@
 //! - **Idempotency.** At-least-once delivery means the same order can arrive
 //!   twice. Redis remembers which order ids are done, so the work happens once.
 
+/// Contract tests: the shapes this service emits and accepts, checked against
+/// the shared messaging-core types with no broker and no sibling running.
+///
+/// They live in src/ rather than tests/ because this is a binary-only crate:
+/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
+/// See .claude/skills/microservice-agent-team/SKILL.md.
+#[cfg(test)]
+mod contract_tests;
+
 use anyhow::{Context as _, Result};
 use futures::StreamExt as _;
 use messaging_core::contract::POISON_ITEM;

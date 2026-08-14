@@ -21,4 +21,8 @@ tracing.workspace = true
 
 [dev-dependencies]
 http-body-util.workspace = true
+# Only the contract tests need this. The service itself never touches JSON
+# directly - axum's `Json` extractor does it - so it stays a dev-dependency
+# and never reaches the shipped binary.
+serde_json.workspace = true
 tower.workspace = true

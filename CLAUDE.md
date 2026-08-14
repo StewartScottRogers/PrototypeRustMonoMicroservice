@@ -59,6 +59,38 @@ DevRemove.cmd    # remove everything, including database volumes
 
 CI runs the same commands, plus `cargo nextest run --profile ci`, `cargo llvm-cov`, and `cargo deny check`.
 
+## Team SOP — who may change what
+
+Work in this repo is divided between **one Microservice Agent Team per service crate** and **one overwatch Orchestration Agent**. The two roles have different writable scope, and the split is the point: teams move fast inside a boundary, the orchestrator owns everything that crosses one.
+
+| | Microservice Agent Team | Orchestration Agent |
+| --- | --- | --- |
+| Owns | exactly one crate under `Microservices/` | everything shared |
+| May edit | its own `src/`, `tests/`, `Cargo.toml`, its migrations | platform crates, workspace root, compose, CI, `.projitems`, `docs/`, `observability/`, `e2e/` |
+| Contracts | **consumes** them, never changes them | **sole owner** — arbitrates and versions them |
+| Tests | complete unit + provider/consumer contract | end-to-end |
+| Branch | `team/<service-name>/<task>` | merges; teams never merge each other |
+
+Full definitions: `.claude/skills/microservice-agent-team/SKILL.md` and `.claude/skills/orchestration-agent/SKILL.md`. Load the one matching the role you are in.
+
+### The three-layer pyramid
+
+| Layer | Owner | Needs a running stack? |
+| --- | --- | --- |
+| **Unit** — every branch of business logic | the team | no |
+| **Contract** — provider round-trip + consumer fixtures | the team | no |
+| **End-to-end** — cross-service choreography | the orchestrator | yes |
+
+The middle layer is what lets a team ship without ever starting a sibling service: contract tests stand in for the neighbours. Consumer-side tests must tolerate **unknown fields**, because an additive contract change reaches producers before consumers and must not break them in between.
+
+E2E tests are `#[ignore]` by default so `cargo test` stays green on a machine with nothing running. Run them with `cargo test -p e2e -- --ignored` after `DevStart.cmd`.
+
+### Contract changes never happen peer-to-peer
+
+A team needing a new field files a request with the orchestrator, keeps working against the current contract, and gets the new version pushed to producer and consumer in the same cycle. Changes are additive by default; a breaking one bumps the version, migrates the producer first, then consumers, then retires the old version.
+
+Two shared files a team may not edit but will need changed: `Microservices/Microservices.projitems` (register a new `.rs`) and anything under the "Orchestration Agent" column above. Put the exact line needed in the handoff note rather than editing it.
+
 ## Rust code is written for a Rust beginner
 
 The owner of this repo is new to Rust. **Every `.rs` file and `Cargo.toml` must explain the language concepts it uses**, not just the business logic: ownership and borrowing (`&`, `.clone()`, `move`), `Result`/`Option` and `?`, traits and `#[derive(...)]`, `async`/`await`, attribute macros like `#[tokio::main]`, lifetimes such as `&'static str`, and why a field is `String` rather than `&str`.
@@ -69,6 +101,8 @@ Name the concept so it can be looked up later ("this is the *turbofish*", "`?` r
 
 **All Rust microservices live under `Microservices/`** — crates in there, never sibling top-level directories.
 
+**The one deliberate exception is `e2e/`**, the orchestrator-owned end-to-end crate. It is a test harness, not a service: it ships in no image and has no bin target. Because a top-level directory is not matched by `members = ["Microservices/*"]`, it is listed explicitly in the workspace, and because the `.projitems` table routes by location it gets its own viewer project. Both are required — miss either and the crate silently drops out of the build or out of Solution Explorer.
+
 The solution is six shared projects plus one plain folder. **Every new file must be registered in the matching `.projitems`**, or it is invisible in Visual Studio even though it is committed and working:
 
 | New file lives in | Register it in |
@@ -78,6 +112,7 @@ The solution is six shared projects plus one plain folder. **Every new file must
 | `compose.yaml`, `Dockerfile`, `Dev*.cmd` | `DevEnvironment/DevEnvironment.projitems` |
 | `.github/…` | `GitHub/GitHub.projitems` |
 | `.claude/skills/…` | `AgentSkills/AgentSkills.projitems` |
+| `e2e/…` (the end-to-end crate) | `e2e/E2E.projitems` |
 | Loose repo metadata (`README.md`, `.gitignore`, launcher scripts) | `DemoRustMonoMicroservice.slnx`, in the `Solution Items` folder |
 
 `AgentSkills/`, `Cargo/`, `DevEnvironment/` and `GitHub/` contain **only** a `.shproj` and a `.projitems` — no real files. They link upward with `$(MSBuildThisFileDirectory)..\…` and a `Link` attribute controlling the displayed name. The files themselves cannot move: cargo, rustup, Docker, GitHub Actions, and Claude Code each require their own fixed location. These projects are viewers, exactly like `Microservices.shproj`.

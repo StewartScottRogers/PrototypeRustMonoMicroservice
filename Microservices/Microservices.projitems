@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
@@ -14,9 +14,11 @@
     <None Include="$(MSBuildThisFileDirectory)service-core\src\config.rs" />
     <None Include="$(MSBuildThisFileDirectory)service-core\src\health.rs" />
     <None Include="$(MSBuildThisFileDirectory)service-core\src\metrics.rs" />
+    <None Include="$(MSBuildThisFileDirectory)service-core\src\url.rs" />
     <None Include="$(MSBuildThisFileDirectory)service-core\src\telemetry.rs" />
     <None Include="$(MSBuildThisFileDirectory)echo-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)echo-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)echo-service\src\contract_tests.rs" />
     <None Include="$(MSBuildThisFileDirectory)messaging-core\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)messaging-core\src\lib.rs" />
     <None Include="$(MSBuildThisFileDirectory)messaging-core\src\client.rs" />
@@ -30,19 +32,26 @@
     <None Include="$(MSBuildThisFileDirectory)db-core\migrations\0001_orders_outbox_audit.sql" />
     <None Include="$(MSBuildThisFileDirectory)gateway-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)gateway-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)gateway-service\src\contract_tests.rs" />
     <None Include="$(MSBuildThisFileDirectory)gateway-service\src\orders.rs" />
     <None Include="$(MSBuildThisFileDirectory)worker-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)worker-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)worker-service\src\contract_tests.rs" />
     <None Include="$(MSBuildThisFileDirectory)notifier-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)notifier-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)notifier-service\src\contract_tests.rs" />
     <None Include="$(MSBuildThisFileDirectory)audit-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)audit-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)audit-service\src\contract_tests.rs" />
     <None Include="$(MSBuildThisFileDirectory)outbox-relay\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)outbox-relay\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)outbox-relay\src\contract_tests.rs" />
     <None Include="$(MSBuildThisFileDirectory)dlq-replay\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)dlq-replay\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)dlq-replay\src\contract_tests.rs" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)mimic-service\src\contract_tests.rs" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\src\collect.rs" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\assets\panel.html" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\assets\console.html" />

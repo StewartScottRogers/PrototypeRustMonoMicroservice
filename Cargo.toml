@@ -3,7 +3,11 @@
 # what lets `cargo` and the CI workflow run without a working-directory dance.
 [workspace]
 resolver = "3"
-members = ["Microservices/*"]
+# The glob covers every service crate. `e2e` is listed separately because it is
+# a top-level directory and a glob rooted at Microservices/ cannot see it — the
+# one deliberate exception to "crates live under Microservices/", because it is
+# a test harness rather than a service and ships in no image.
+members = ["Microservices/*", "e2e"]
 
 [workspace.package]
 version = "0.1.0"

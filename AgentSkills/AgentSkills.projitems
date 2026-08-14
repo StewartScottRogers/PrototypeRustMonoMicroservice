@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
   Viewer-only shared project for the Claude Code skills.
 
@@ -22,5 +22,7 @@
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\dev-environment\SKILL.md" Link="dev-environment\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\gh-supply-chain\SKILL.md" Link="gh-supply-chain\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\messaging-and-eventing\SKILL.md" Link="messaging-and-eventing\SKILL.md" />
+    <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\orchestration-agent\SKILL.md" Link="orchestration-agent\SKILL.md" />
+    <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\microservice-agent-team\SKILL.md" Link="microservice-agent-team\SKILL.md" />
   </ItemGroup>
 </Project>

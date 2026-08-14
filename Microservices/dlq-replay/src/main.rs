@@ -21,6 +21,15 @@
 //! The worker is idempotent, so replaying a message that did in fact succeed is
 //! harmless.
 
+/// Contract tests: the shapes this service emits and accepts, checked against
+/// the shared messaging-core types with no broker and no sibling running.
+///
+/// They live in src/ rather than tests/ because this is a binary-only crate:
+/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
+/// See .claude/skills/microservice-agent-team/SKILL.md.
+#[cfg(test)]
+mod contract_tests;
+
 use anyhow::{Context as _, Result};
 use futures::StreamExt as _;
 use messaging_core::{Envelope, Messaging, OrderCommand, subjects};
