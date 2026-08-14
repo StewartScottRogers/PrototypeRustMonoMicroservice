@@ -26,6 +26,8 @@ use crate::live::{TapEvent, is_stale};
 use anyhow::Result;
 use futures::StreamExt as _;
 use messaging_core::{Envelope, Messaging, subjects};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 
@@ -99,19 +101,30 @@ const WATCHED: [Watched; 3] = [
     },
 ];
 
-/// Reports whether every consumer is currently connected.
+/// Reports whether every consumer is currently connected, and whether any of
+/// them has had to throw a message away.
 ///
 /// A `watch` channel is "one value, many readers, and the readers are told when
 /// it changes" — the right shape for a flag several tasks read and one writes.
 #[derive(Clone)]
 pub struct Health {
     connected: watch::Sender<[bool; 3]>,
+    /// Every message the tap saw but could not report, for any reason.
+    ///
+    /// # Why a count and not a flag
+    ///
+    /// The reader needs to ask "did anything get thrown away *since I last
+    /// looked*", which a flag cannot answer without the reader clearing it and
+    /// racing the writer. A monotonic count lets the reader compare two
+    /// readings and decide for itself.
+    dropped: Arc<AtomicU64>,
 }
 
 impl Health {
     pub fn new() -> Self {
         Self {
             connected: watch::Sender::new([false; 3]),
+            dropped: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -122,6 +135,29 @@ impl Health {
     /// quiet stack as a failure.
     pub fn all_connected(&self) -> bool {
         self.connected.borrow().iter().all(|connected| *connected)
+    }
+
+    /// How many messages have been thrown away since the process started.
+    ///
+    /// # What this is for
+    ///
+    /// Being *connected* is not the same as being *able to observe*. A tap can
+    /// hold all three consumers open and still discard everything — because the
+    /// staleness guard rejected it, or because the aggregator fell behind and
+    /// the channel filled. A rate counted from a window in which messages were
+    /// discarded is not a measurement, and must not be allowed to overwrite a
+    /// sampled value that is correct.
+    ///
+    /// Without this, the panel would show a confident zero over the top of a
+    /// true reading, with every lamp green and the flow indicator saying live —
+    /// which reads as "the relay has stopped" at the exact moment it may be
+    /// working hardest.
+    pub fn dropped_total(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+
+    fn note_dropped(&self) {
+        self.dropped.fetch_add(1, Ordering::Relaxed);
     }
 
     fn set(&self, index: usize, connected: bool) {
@@ -280,6 +316,7 @@ async fn follow(
                 match serde_json::from_slice::<Envelope<serde_json::Value>>(&message.payload) {
                     Ok(envelope) if is_stale(envelope.occurred_at, chrono::Utc::now()) => {
                         dropped_stale += 1;
+                        health.note_dropped();
                     }
                     Ok(_) => {
                         // `try_send` never waits. A stalled panel must not be
@@ -288,6 +325,7 @@ async fn follow(
                         // rather than slowing anything down.
                         if sender.try_send(watched.reports).is_err() {
                             dropped_full += 1;
+                            health.note_dropped();
                         }
                     }
                     Err(error) => {

@@ -472,3 +472,88 @@ fn a_readable_depth_still_shows_the_number() {
     assert_eq!(queue.value, "7");
     assert!(!queue.warn);
 }
+
+/// A tap that is connected but blind must not overwrite a correct reading.
+///
+/// This is the residual half of the confident-zero problem, and the one that
+/// survived an adversarial review of the first fix. Being *connected* says only
+/// that three consumers are attached. A tap can hold all three open and still
+/// discard everything — the staleness guard rejecting a publisher whose clock
+/// runs behind, or the report channel filling because the aggregator fell
+/// behind under load.
+///
+/// The rate is then computed from a window with a hole in it, reads 0.00, and
+/// replaces a Prometheus value that is correct. Every lamp stays green and the
+/// flow indicator still says live, so the panel reads as "the relay has
+/// stopped" at the moment the relay may be working hardest.
+///
+/// The guard is that a reading may only win if nothing was thrown away since
+/// the last reconciliation. This test states that rule directly.
+#[test]
+fn a_window_that_dropped_messages_must_not_win_the_merge() {
+    let sampled = Snapshot {
+        generated_at: Utc::now(),
+        nodes: vec![],
+        gauges: vec![Gauge {
+            id: "g-relayed".to_owned(),
+            // What Prometheus correctly observed.
+            value: "12.00".to_owned(),
+            warn: false,
+        }],
+        alarms: vec![],
+        sources_ok: true,
+    };
+
+    let blind_live_reading = vec![Gauge {
+        id: "g-relayed".to_owned(),
+        // What a tap that discarded everything would compute.
+        value: "0.00".to_owned(),
+        warn: false,
+    }];
+
+    // The three conditions the aggregator combines. Connected and warmed up,
+    // but something was dropped, so the window is not a measurement.
+    let connected = true;
+    let warmed_up = true;
+    let observed_everything = false;
+
+    let merged = crate::live::merge(
+        sampled,
+        blind_live_reading,
+        connected && warmed_up && observed_everything,
+    );
+
+    assert_eq!(
+        merged.gauges[0].value, "12.00",
+        "a tap that threw messages away must not replace a correct sampled reading with a zero"
+    );
+}
+
+/// And with nothing dropped, the live reading is allowed to win.
+#[test]
+fn a_clean_window_still_wins_the_merge() {
+    let sampled = Snapshot {
+        generated_at: Utc::now(),
+        nodes: vec![],
+        gauges: vec![Gauge {
+            id: "g-relayed".to_owned(),
+            value: "12.00".to_owned(),
+            warn: false,
+        }],
+        alarms: vec![],
+        sources_ok: true,
+    };
+
+    let live = vec![Gauge {
+        id: "g-relayed".to_owned(),
+        value: "13.40".to_owned(),
+        warn: false,
+    }];
+
+    let merged = crate::live::merge(sampled, live, true && true && true);
+
+    assert_eq!(
+        merged.gauges[0].value, "13.40",
+        "a complete window is the whole point of the tap and must win"
+    );
+}

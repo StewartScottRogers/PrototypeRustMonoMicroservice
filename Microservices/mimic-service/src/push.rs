@@ -154,6 +154,7 @@ pub async fn aggregate(
     let mut last_sample_at = Instant::now();
     let mut published = Arc::clone(&latest.borrow());
     let mut counting_since_connected = false;
+    let mut dropped_since_last_reconcile = health.dropped_total();
 
     let mut coalesce = tokio::time::interval(COALESCE_WINDOW);
     let mut heartbeat = tokio::time::interval(HEARTBEAT);
@@ -267,11 +268,29 @@ pub async fn aggregate(
                 };
 
                 let now = Instant::now();
-                // Live readings only win once their window has actually been
-                // open for a full window. Before that they under-read, and an
-                // under-reading live value replacing a correct sampled one is a
-                // confident lie told on every restart.
-                let live_ok = health.all_connected() && readings.warmed_up(now);
+
+                // Being connected is not the same as being able to observe.
+                //
+                // Two ways a connected tap can still be blind: the staleness
+                // guard rejects everything (a publisher whose clock runs
+                // behind), or this aggregator fell behind and the report
+                // channel filled. Either way the window contains a hole, and a
+                // rate counted from a window with a hole is not a measurement.
+                //
+                // Letting it through would put a confident zero over a correct
+                // sampled reading, with every lamp green and the flow indicator
+                // saying live — which reads as "the relay has stopped" at the
+                // very moment the relay may be working hardest.
+                let dropped_now = health.dropped_total();
+                let observed_everything = dropped_now == dropped_since_last_reconcile;
+                dropped_since_last_reconcile = dropped_now;
+
+                // Live readings also only win once their window has actually
+                // been open for a full window. Before that they under-read, and
+                // an under-reading live value replacing a correct sampled one
+                // is a confident lie told on every restart.
+                let live_ok =
+                    health.all_connected() && readings.warmed_up(now) && observed_everything;
                 let merged = live::merge(
                     sampled,
                     readings.gauges(now),
