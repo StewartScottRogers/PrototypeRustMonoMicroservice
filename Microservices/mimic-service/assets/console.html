@@ -249,7 +249,41 @@
       : "source lost";
   }
 
-  async function pollStatus() {
+  // The status strip listens to the same feed the panel does, so the two can
+  // never disagree about what is happening. It only needs whole pictures, so it
+  // ignores the traffic messages the panel animates from.
+  let statusSocket = null;
+  let statusBackoff = 500;
+
+  function listenForStatus() {
+    const scheme = location.protocol === "https:" ? "wss://" : "ws://";
+    statusSocket = new WebSocket(scheme + location.host + "/api/live");
+
+    statusSocket.onopen = () => { statusBackoff = 500; };
+
+    statusSocket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === "frame") paintStatus(message.state);
+      } catch {
+        // A message this strip cannot read is not a reason to blank it.
+      }
+    };
+
+    statusSocket.onclose = () => {
+      $("svc-line").textContent = "no feed";
+      $("dot-health").className = "dot unknown";
+      $("stamp-line").textContent = "—";
+
+      window.setTimeout(listenForStatus, statusBackoff * (0.8 + Math.random() * 0.4));
+      statusBackoff = Math.min(statusBackoff * 2, 10000);
+    };
+
+    statusSocket.onerror = () => statusSocket.close();
+  }
+
+  // One read before the socket opens, so the strip is never blank on arrival.
+  async function primeStatus() {
     try {
       paintStatus(await (await fetch("/api/state", { cache: "no-store" })).json());
     } catch {
@@ -267,10 +301,8 @@
   });
 
   loadLinks();
-  pollStatus();
-  // One second, matching the panel and the collector behind it, so the status
-  // strip never disagrees with the panel it is framing.
-  setInterval(pollStatus, 1000);
+  primeStatus();
+  listenForStatus();
 </script>
 </body>
 </html>

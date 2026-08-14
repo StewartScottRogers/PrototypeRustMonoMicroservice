@@ -240,6 +240,15 @@ services:
       PORT: 8080
       PROMETHEUS_URL: http://prometheus:9090
       NATS_MONITOR_URL: http://nats:8222
+      # The panel subscribes to the message bus itself, under its own durable
+      # consumer names, so it learns about an order in the same instant every
+      # other service does rather than when a scrape next happens.
+      #
+      # Do not scale this service past one replica. Two would each hold half of
+      # every stream, and each browser would then see half the traffic. The
+      # durable names are fixed strings, so a second replica cannot be given its
+      # own.
+      NATS_URL: nats://nats:4222
       # Where the *browser* should go, not where this service should. The page
       # renders on your machine, so these are published host ports and must
       # track the same defaults used to publish them above.
@@ -253,9 +262,13 @@ services:
       nats: { condition: service_healthy }
     healthcheck: *service-healthcheck
 
-  # Scrapes /metrics from every service every 5 seconds. That interval is far
-  # more frequent than production would use; a demo you have to wait a minute
-  # to see react is not a demo.
+  # Scrapes /metrics from every service every 2 seconds. That interval is far
+  # more frequent than production would use; a demonstration you have to wait a
+  # minute to see react is not a demonstration.
+  #
+  # Note this is now the *slow* half of the panel: message flow reaches the
+  # screen from the bus in milliseconds, while lamps and percentiles still wait
+  # for a scrape. The panel labels the two separately for exactly that reason.
   prometheus:
     image: prom/prometheus:v3.13.2
     command:

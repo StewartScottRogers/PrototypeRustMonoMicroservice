@@ -3,7 +3,7 @@
 use crate::envelope::Envelope;
 use crate::subjects;
 use anyhow::{Context as _, Result};
-use async_nats::jetstream::consumer::pull;
+use async_nats::jetstream::consumer::{DeliverPolicy, pull};
 use async_nats::jetstream::{self, stream};
 use serde::Serialize;
 use std::time::Duration;
@@ -190,6 +190,79 @@ impl Messaging {
             consumer = durable_name,
             filter = filter_subject,
             "consumer ready"
+        );
+
+        consumer
+            .messages()
+            .await
+            .with_context(|| format!("could not read from consumer {durable_name}"))
+    }
+
+    /// Opens a durable consumer that starts at the *end* of the stream.
+    ///
+    /// # Why this exists separately from [`Self::durable_consumer`]
+    ///
+    /// A normal consumer starts at the beginning and works forward, which is
+    /// what a worker wants: nothing committed may be skipped. An **observer**
+    /// wants the opposite. The mimic panel exists to answer "what is happening
+    /// now", and these streams retain ten thousand messages — so a panel that
+    /// started from the beginning would open by replaying every order this
+    /// stack has ever seen, at full speed, as though it were all happening at
+    /// once. Every restart would produce the same false stampede.
+    ///
+    /// `DeliverPolicy::New` means "deliver messages published from this moment
+    /// onward". Anything already in the stream is skipped, deliberately.
+    ///
+    /// # Do not use this for work
+    ///
+    /// Skipping is data loss for anything that must not miss a message. This is
+    /// for a display, and the only caller is the panel's tap. A worker, a
+    /// subscriber, or anything that writes to a database must use
+    /// [`Self::durable_consumer`].
+    ///
+    /// # The Rust in this signature
+    ///
+    /// `&'static str` for the names is a *lifetime bound* meaning "a string
+    /// that lives for the whole program" — in practice a literal or a `const`.
+    /// It costs nothing to pass and makes it impossible to hand in a temporary
+    /// string that is freed while the consumer is still running.
+    pub async fn durable_consumer_from_now(
+        &self,
+        stream_name: &'static str,
+        durable_name: &'static str,
+        filter_subject: &'static str,
+    ) -> Result<pull::Stream> {
+        let stream = self
+            .jetstream
+            .get_stream(stream_name)
+            .await
+            .with_context(|| format!("stream {stream_name} does not exist"))?;
+
+        let consumer = stream
+            .get_or_create_consumer(
+                durable_name,
+                pull::Config {
+                    durable_name: Some(durable_name.to_owned()),
+                    filter_subject: filter_subject.to_owned(),
+                    // One attempt, never zero. `max_deliver` is skipped from the
+                    // wire when it holds its default, so a 0 here would omit the
+                    // field and let the server apply *unlimited* redelivery —
+                    // the exact opposite of the intent. An observer must never
+                    // cause a message to be redelivered.
+                    max_deliver: 1,
+                    ack_wait: ACK_WAIT,
+                    deliver_policy: DeliverPolicy::New,
+                    ..Default::default()
+                },
+            )
+            .await
+            .with_context(|| format!("could not create consumer {durable_name}"))?;
+
+        tracing::info!(
+            stream = stream_name,
+            consumer = durable_name,
+            filter = filter_subject,
+            "observer consumer ready, starting from now"
         );
 
         consumer

@@ -52,6 +52,9 @@
     <None Include="$(MSBuildThisFileDirectory)mimic-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\src\main.rs" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\src\contract_tests.rs" />
+    <None Include="$(MSBuildThisFileDirectory)mimic-service\src\live.rs" />
+    <None Include="$(MSBuildThisFileDirectory)mimic-service\src\push.rs" />
+    <None Include="$(MSBuildThisFileDirectory)mimic-service\src\tap.rs" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\src\collect.rs" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\assets\panel.html" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\assets\console.html" />

@@ -12,7 +12,7 @@
 //! than useless, because people learn to ignore it.
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// A 99th-percentile processing time above this is "degraded", not healthy.
@@ -32,7 +32,7 @@ const FRESHNESS_WINDOW: &str = "30s";
 ///
 /// `Unknown` exists deliberately: "I cannot tell" is different from "it is
 /// down", and a panel that conflates them teaches people to distrust it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Healthy,
@@ -42,7 +42,10 @@ pub enum Status {
 }
 
 /// One equipment block on the panel.
-#[derive(Debug, Clone, Serialize)]
+///
+/// `PartialEq` is derived so the aggregator can ask "would this draw the same
+/// screen?" and skip a redraw when nothing moved. See [`crate::live::same_picture`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Node {
     /// Matches an element id in the drawing, which is how the browser knows what
     /// to repaint. A typo here shows up as a lamp that never changes.
@@ -52,8 +55,8 @@ pub struct Node {
     pub detail: String,
 }
 
-/// A number rendered onto a link.
-#[derive(Debug, Clone, Serialize)]
+/// One reading in the instrument column.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Gauge {
     pub id: String,
     pub value: String,
@@ -62,14 +65,19 @@ pub struct Gauge {
 }
 
 /// Something worth putting in the banner.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Alarm {
     pub text: String,
     pub severity: Status,
 }
 
 /// Everything the panel needs for one repaint.
-#[derive(Debug, Clone, Serialize)]
+///
+/// Deliberately *not* `PartialEq`: `generated_at` changes on every reading, so
+/// a derived equality would report "different" forever — which is the very bug
+/// change detection exists to avoid. [`crate::live::same_picture`] compares the
+/// fields that actually draw something.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
     pub generated_at: DateTime<Utc>,
     pub nodes: Vec<Node>,
@@ -315,8 +323,18 @@ impl Collector {
             )
             .await;
 
-        let worker_backlog = depths.get("consumer:order-worker").copied().unwrap_or(0);
-        let dead_letters = depths.get("stream:ORDER_DLQ").copied().unwrap_or(0);
+        // Kept as `Option`, not flattened to zero.
+        //
+        // These two come from the monitoring endpoint on the broker, and when
+        // the broker is unreachable the honest answer is "I cannot tell". A
+        // zero here would be a *confident* claim that the queue is empty and no
+        // message is parked — which is exactly the reassuring lie a panel must
+        // never tell, and it reads identically to a healthy idle system.
+        //
+        // Everything downstream now has to decide what to do about "unknown",
+        // which is the point.
+        let worker_backlog = depths.get("consumer:order-worker").copied();
+        let dead_letters = depths.get("stream:ORDER_DLQ").copied();
 
         let mut nodes = Vec::new();
         let mut alarms = Vec::new();
@@ -359,7 +377,10 @@ impl Collector {
         if let Some(worker) = nodes
             .iter_mut()
             .find(|node| node.id == "worker" && node.status == Status::Healthy)
-            && let Some((detail, alarm)) = classify_worker_health(p99, worker_backlog)
+            // An unknown backlog cannot make the worker amber. Not knowing is
+            // not evidence of a problem.
+            && let Some((detail, alarm)) =
+                classify_worker_health(p99, worker_backlog.unwrap_or(0))
         {
             worker.status = Status::Degraded;
             worker.detail = detail;
@@ -430,7 +451,8 @@ impl Collector {
         });
 
         // ---- dead letters are their own alarm ----
-        if dead_letters > 0 {
+        if dead_letters.unwrap_or(0) > 0 {
+            let dead_letters = dead_letters.unwrap_or(0);
             alarms.push(Alarm {
                 text: format!(
                     "{dead_letters} message{} in the dead-letter queue — DevReplay.cmd to return them",
@@ -470,15 +492,18 @@ impl Collector {
                 "sum(rate(events_handled_total{service=\"audit-service\"}[15s]))",
             )
             .await,
+            // The em dash is the "no reading" mark used everywhere on this
+            // panel. It is not a zero, and the difference matters most exactly
+            // when the broker is the thing that has gone wrong.
             Gauge {
                 id: "g-queue".to_owned(),
-                value: worker_backlog.to_string(),
-                warn: worker_backlog > QUEUE_WARN_DEPTH,
+                value: worker_backlog.map_or_else(|| "—".to_owned(), |depth| depth.to_string()),
+                warn: worker_backlog.is_some_and(|depth| depth > QUEUE_WARN_DEPTH),
             },
             Gauge {
                 id: "g-dlq".to_owned(),
-                value: dead_letters.to_string(),
-                warn: dead_letters > 0,
+                value: dead_letters.map_or_else(|| "—".to_owned(), |count| count.to_string()),
+                warn: dead_letters.is_some_and(|count| count > 0),
             },
             Gauge {
                 id: "g-p99".to_owned(),

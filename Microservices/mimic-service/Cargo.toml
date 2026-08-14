@@ -1,6 +1,6 @@
 [package]
 name = "mimic-service"
-description = "Serves a live control-room mimic of this stack, driven by Prometheus and the NATS monitoring endpoint."
+description = "Serves a live control-room mimic of this stack, driven by a message-bus tap, Prometheus, and the NATS monitoring endpoint."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,12 +12,19 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
-axum.workspace = true
+# The "ws" feature adds the WebSocket upgrade this service uses to push changes
+# to the browser. Enabled here rather than at the workspace root on purpose:
+# turning it on centrally would enlarge every other service image for a feature
+# only this one uses.
+axum = { workspace = true, features = ["ws"] }
 chrono.workspace = true
-metrics.workspace = true
+# `StreamExt::next`, for reading messages off a JetStream consumer.
+futures.workspace = true
+messaging-core.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 service-core.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+uuid.workspace = true

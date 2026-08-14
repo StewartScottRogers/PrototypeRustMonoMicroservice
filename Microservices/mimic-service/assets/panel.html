@@ -32,11 +32,24 @@
   figcaption{margin:.9rem auto 0;max-width:60rem;font-size:.78rem;line-height:1.7;
              color:var(--dim);text-align:center;text-wrap:pretty}
   figcaption b{color:var(--ink);font-weight:500}
+  /* A line that just carried a message. Brightening and thickening is
+     length-independent, which matters because most connectors here are 32 to 52
+     units long against a 1500-unit canvas - a travelling dot on those would be a
+     twitch, not a journey. */
+  .lit{stroke-width:2.8 !important;filter:brightness(1.9)}
+
   @media (prefers-reduced-motion:no-preference){
-    /* A one-second heartbeat on the live indicator, matching the poll, so a
-       frozen panel is obvious without reading the timestamp. */
+    /* A one-second heartbeat on the live indicator, so a frozen panel is
+       obvious without reading a timestamp. */
     #beat{animation:beat 1s steps(1,end) infinite}
     @keyframes beat{50%{opacity:.2}}
+
+    .lit{transition:stroke-width .12s ease-out,filter .12s ease-out}
+
+    /* The asynchronous lines already carry a dash pattern, so flowing them
+       costs no new elements at all - just an offset animation. */
+    .flowing{animation:march .6s linear infinite}
+    @keyframes march{to{stroke-dashoffset:-24}}
   }
 </style>
 </head>
@@ -44,13 +57,26 @@
 <div class="shell">
   <div class="strip">
     <span>Order Platform &middot; <b>Live Mimic</b></span>
-    <span>Updated <b id="stamp">&mdash;</b> &middot; <span id="connection"><span id="beat">&#9679;</span> LIVE</span></span>
+    <!--
+      Three separate claims, because they have three separate failure modes and
+      collapsing any pair produces a panel that is confidently wrong about the
+      half that still works:
+
+        lamps      the sampled data is fresh        (from the server's own clock)
+        flow       the message bus tap is connected (not: messages are arriving)
+        connection this browser is being told       (from the watchdog below)
+
+      A lit wire beside a grey lamp is correct behaviour, and a reader has to be
+      able to see why rather than concluding the whole panel is broken.
+    -->
+    <span>Lamps <b id="age-lamps">&mdash;</b> &middot; Flow <b id="age-flow">&mdash;</b>
+      &middot; <span id="connection"><span id="beat">&#9679;</span> LIVE</span></span>
   </div>
 
   <div class="bezel">
     <div class="scroller">
       <figure>
-        <svg viewBox="0 0 1500 812" role="img"
+        <svg viewBox="0 0 1500 838" role="img"
              aria-label="Live mimic of the order platform, read left to right and then top to bottom. Band one: clients post an order to the gateway service, which writes the order and an outbox row to PostgreSQL in one transaction, and the outbox relay polls that table. The gateway also calls the echo service synchronously as a simple example. Band two: the relay publishes to the command stream on the NATS JetStream broker, one worker replica takes each command, and the worker publishes to the event stream, which every subscriber reads a copy of, so both the notifier and the audit service react. Redis holds idempotency keys and repeatedly failing messages are parked on the dead-letter stream. Band three: Prometheus, Grafana and Jaeger receive telemetry from every service. An instrument column on the right shows live rates and depths.">
           <defs>
             <marker id="arrow-sync" viewBox="0 0 10 10" refX="9" refY="5"
@@ -106,7 +132,7 @@
           <text class="name" x="123" y="167" text-anchor="middle">Clients</text>
           <text class="sub"  x="123" y="185" text-anchor="middle">curl or DevDemo.cmd</text>
 
-          <path class="line-sync" d="M198 169 H244" marker-end="url(#arrow-sync)"/>
+          <path id="edge-clients-gateway" class="line-sync" d="M198 169 H244" marker-end="url(#arrow-sync)"/>
           <text class="edge-lbl" x="221" y="128" text-anchor="middle">place an order</text>
 
           <!-- gateway -->
@@ -115,7 +141,7 @@
           <text class="name" x="336" y="167" text-anchor="middle">Gateway service</text>
           <text id="txt-gateway" class="detail" x="336" y="185" text-anchor="middle">&mdash;</text>
 
-          <path class="line-sync" d="M444 169 H489" marker-end="url(#arrow-sync)"/>
+          <path id="edge-gateway-postgres" class="line-sync" d="M444 169 H489" marker-end="url(#arrow-sync)"/>
           <text class="edge-lbl" x="466" y="128" text-anchor="middle">one transaction</text>
 
           <!-- postgresql -->
@@ -124,7 +150,7 @@
           <text class="name" x="581" y="167" text-anchor="middle">PostgreSQL</text>
           <text id="txt-postgres" class="detail" x="581" y="185" text-anchor="middle">&mdash;</text>
 
-          <path class="line-sync" d="M689 169 H734" marker-end="url(#arrow-sync)"/>
+          <path id="edge-postgres-relay" class="line-sync" d="M689 169 H734" marker-end="url(#arrow-sync)"/>
           <text class="edge-lbl" x="711" y="128" text-anchor="middle">poll</text>
 
           <!-- outbox relay -->
@@ -133,14 +159,14 @@
           <text class="name" x="826" y="167" text-anchor="middle">Outbox relay</text>
           <text id="txt-relay" class="detail" x="826" y="185" text-anchor="middle">&mdash;</text>
 
-          <path class="line-async" d="M934 169 H986" marker-end="url(#arrow-async)"/>
+          <path id="edge-relay-tag" class="line-async" d="M934 169 H986" marker-end="url(#arrow-async)"/>
 
           <!-- continuation tag: leaves band 1 -->
           <rect class="box-tag" x="990" y="146" width="70" height="46" rx="2"/>
           <text class="tag-txt" x="1025" y="175" text-anchor="middle">&#9660; A</text>
 
           <!-- the synchronous side example, hanging below the gateway -->
-          <path class="line-sync" d="M336 202 V244" marker-end="url(#arrow-sync)"/>
+          <path id="edge-gateway-echo" class="line-sync" d="M336 202 V244" marker-end="url(#arrow-sync)"/>
           <text class="edge-lbl" x="348" y="226">a simpler example</text>
 
           <rect class="box-soft" x="248" y="248" width="196" height="56" rx="2"/>
@@ -161,14 +187,14 @@
           <rect class="box-tag" x="48" y="378" width="70" height="46" rx="2"/>
           <text class="tag-txt" x="83" y="407" text-anchor="middle">A &#9654;</text>
 
-          <path class="line-async" d="M118 401 H150" marker-end="url(#arrow-async)"/>
+          <path id="edge-tag-commands" class="line-async" d="M118 401 H150" marker-end="url(#arrow-async)"/>
 
           <!-- command stream -->
           <rect class="box" x="154" y="372" width="218" height="66" rx="2"/>
           <text class="name" x="263" y="399" text-anchor="middle">Command stream</text>
           <text class="sub"  x="263" y="417" text-anchor="middle">one shared consumer</text>
 
-          <path class="line-async" d="M372 405 H422" marker-end="url(#arrow-async)"/>
+          <path id="edge-commands-worker" class="line-async" d="M372 405 H422" marker-end="url(#arrow-async)"/>
           <text class="edge-lbl" x="397" y="364" text-anchor="middle">one takes it</text>
 
           <!-- worker -->
@@ -177,7 +203,7 @@
           <text class="name" x="514" y="399" text-anchor="middle">Worker</text>
           <text id="txt-worker" class="detail" x="514" y="417" text-anchor="middle">&mdash;</text>
 
-          <path class="line-async" d="M622 405 H672" marker-end="url(#arrow-async)"/>
+          <path id="edge-worker-events" class="line-async" d="M622 405 H672" marker-end="url(#arrow-async)"/>
           <text class="edge-lbl" x="647" y="364" text-anchor="middle">publishes</text>
 
           <!-- event stream -->
@@ -186,8 +212,8 @@
           <text class="sub"  x="785" y="417" text-anchor="middle">every subscriber gets a copy</text>
 
           <!-- fan-out: two consumers, stacked so the copy is visible -->
-          <path class="line-async" d="M894 391 H932 V366 H976" marker-end="url(#arrow-async)"/>
-          <path class="line-async" d="M894 419 H932 V452 H976" marker-end="url(#arrow-async)"/>
+          <path id="edge-events-notifier" class="line-async" d="M894 391 H932 V366 H976" marker-end="url(#arrow-async)"/>
+          <path id="edge-events-audit" class="line-async" d="M894 419 H932 V452 H976" marker-end="url(#arrow-async)"/>
 
           <rect class="box" x="980" y="336" width="196" height="60" rx="2"/>
           <circle id="led-notifier" cx="1160" cy="350" r="6" fill="#5a6b78"/>
@@ -203,10 +229,10 @@
 
           <!-- what hangs below the worker: the store it dedupes with, and the
                place a message goes when it cannot succeed -->
-          <path class="line-async" d="M480 438 V486" marker-end="url(#arrow-async)"/>
+          <path id="edge-worker-redis" class="line-async" d="M480 438 V486" marker-end="url(#arrow-async)"/>
           <text class="edge-lbl" x="300" y="470">claims each order once</text>
 
-          <path class="line-async" d="M568 438 V486" marker-end="url(#arrow-async)"/>
+          <path id="edge-worker-deadletter" class="line-async" d="M568 438 V486" marker-end="url(#arrow-async)"/>
           <text class="edge-lbl" x="700" y="470">after three failed attempts</text>
 
           <rect class="box-soft" x="330" y="490" width="180" height="54" rx="2"/>
@@ -227,11 +253,11 @@
 
           <!-- One rail, three drops. Every service above feeds it, so drawing a
                line from each would add nine crossings and say nothing more. -->
-          <path class="line-quiet" d="M154 596 H1176"/>
+          <path id="edge-telemetry-rail" class="line-quiet" d="M154 596 H1176"/>
           <text class="edge-lbl" x="1176" y="588" text-anchor="end">every service above reports here</text>
-          <path class="line-quiet" d="M232 596 V630" marker-end="url(#arrow-quiet)"/>
-          <path class="line-quiet" d="M478 596 V630" marker-end="url(#arrow-quiet)"/>
-          <path class="line-quiet" d="M724 596 V630" marker-end="url(#arrow-quiet)"/>
+          <path id="edge-telemetry-prometheus" class="line-quiet" d="M232 596 V630" marker-end="url(#arrow-quiet)"/>
+          <path id="edge-telemetry-grafana" class="line-quiet" d="M478 596 V630" marker-end="url(#arrow-quiet)"/>
+          <path id="edge-telemetry-jaeger" class="line-quiet" d="M724 596 V630" marker-end="url(#arrow-quiet)"/>
 
           <rect class="box-soft" x="154" y="634" width="156" height="52" rx="2"/>
           <text class="name" x="232" y="659" text-anchor="middle">Prometheus</text>
@@ -307,34 +333,89 @@
           <text class="sub" x="1334" y="800">degraded</text>
           <circle cx="1404" cy="796" r="5" fill="#ff4a4a"/>
           <text class="sub" x="1418" y="800">down</text>
+
+          <!-- The honest reading of every animation on this page. It belongs
+               here rather than only in the walkthrough, because someone
+               watching a line light up is not reading the walkthrough. -->
+          <text class="read-unt" x="1240" y="822">a lit line means a message was sent along it</text>
         </svg>
       </figure>
       <figcaption>
-        Every lamp and number here is read from the running system, not typed in.
-        The <b>worker</b> shares one durable consumer name, so the load splits
-        between its replicas; the <b>notifier</b> and the <b>audit</b> service hold
-        separate names, so each receives every event. That single difference is why
-        one of those readings halves when you scale and the others do not.
+        Every lamp, number and moving line here is read from the running system,
+        not typed in. This panel is a subscriber on the same message bus the
+        services use, so a line lights the moment a message is published rather
+        than whenever a measurement next happens to be taken.
+        Watch the difference the platform exists to teach: one command lights a
+        single line into the <b>worker</b>, because the workers share one durable
+        consumer name and split the load. One event lights the
+        <b>notifier</b> and <b>audit</b> lines <em>together</em>, because those two
+        hold separate names and each receives its own copy.
       </figcaption>
     </div>
   </div>
 </div>
 
 <script>
-  // Polls this service, which polls Prometheus. One collector serves every open
-  // tab, so a wall display costs the same as a single visitor.
+  // ===========================================================================
+  // The panel is told, not asked.
   //
-  // One second, matching the collector behind it. Prometheus scrapes every two
-  // seconds, so a change reaches this screen in about three seconds.
-  const POLL_MILLISECONDS = 1000;
+  // This page used to poll once a second, which meant nothing on screen could
+  // ever be newer than the last request. It now holds one socket open and the
+  // service pushes as things happen. Three kinds of message arrive:
+  //
+  //   frame  the whole picture. On connect, and whenever it changes.
+  //   pulse  traffic crossed the message bus. Readings are absolute values;
+  //          edges are the lines to light.
+  //   tick   nothing changed, and here is how fresh each claim is.
+  //
+  // The one recovery rule: apply a message only if its sequence number is
+  // greater than the last one seen. Because readings are absolute rather than
+  // increments, a browser that slept, lagged, reconnected or met a restarted
+  // server all recover the same way - the next message puts it right.
+  // ===========================================================================
 
   const COLOURS = { healthy:"#2fd98a", degraded:"#ffb020", down:"#ff4a4a", unknown:"#5a6b78" };
   const ALARM_GROUND = { healthy:"#0f1a14", degraded:"#241703", down:"#2a0f0f", unknown:"#141b21" };
 
-  const byId = (id) => document.getElementById(id);
+  // A line stays lit this long after a message crossed it.
+  const LIT_MILLISECONDS = 340;
+  // How long the whole staggered command path takes to travel, left to right.
+  const STAGGER_MILLISECONDS = 40;
+  // Silence longer than this means the feed is gone, whatever the socket says.
+  const WATCHDOG_MILLISECONDS = 3000;
+  // Sampled data older than this stops being described as live.
+  const LAMPS_FRESH_MILLISECONDS = 6000;
 
-  function paint(state) {
-    for (const node of state.nodes) {
+  // The lines a command travels, in order. Six of them, ending at exactly one
+  // line into the worker - because one worker takes each command.
+  const COMMAND_EDGES = ["edge-clients-gateway", "edge-gateway-postgres", "edge-postgres-relay",
+                         "edge-relay-tag", "edge-tag-commands", "edge-commands-worker"];
+  // One publish, two subscribers, lit together rather than in sequence. That
+  // simultaneity is the whole difference between eventing and messaging.
+  const EVENT_EDGES = ["edge-worker-events", "edge-events-notifier", "edge-events-audit"];
+  const DEAD_LETTER_EDGES = ["edge-worker-deadletter"];
+  // The two longest lines on the drawing, and the two that carry the lesson, so
+  // they are the two that get a travelling dot rather than only a flash.
+  const DOTTED_EDGES = ["edge-events-notifier", "edge-events-audit"];
+
+  const byId = (id) => document.getElementById(id);
+  const motionAllowed = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let socket = null;
+  let lastSeq = -1;
+  let epoch = null;
+  let watchdog = null;
+  let failedOpens = 0;
+  let backoff = 500;
+  let sampling = null;          // the polling fallback, if it ever engages
+  const litUntil = new Map();   // edge identifier -> when its flash expires
+
+  // ---------------------------------------------------------------------------
+  // Painting
+  // ---------------------------------------------------------------------------
+
+  function paintNodes(nodes) {
+    for (const node of nodes) {
       const lamp = byId("led-" + node.id);
       if (lamp) lamp.setAttribute("fill", COLOURS[node.status] || COLOURS.unknown);
 
@@ -351,8 +432,10 @@
         if (box) box.setAttribute("stroke", node.status === "healthy" ? "#334c5c" : COLOURS[node.status]);
       }
     }
+  }
 
-    for (const reading of state.gauges) {
+  function paintGauges(gauges) {
+    for (const reading of gauges) {
       const value = byId(reading.id);
       if (!value) continue;
       value.textContent = reading.value;
@@ -360,15 +443,17 @@
       const tile = byId("box-" + reading.id);
       if (tile) tile.setAttribute("stroke", reading.warn ? COLOURS.degraded : "#22333e");
     }
+  }
 
-    const worst = state.alarms.reduce((carried, alarm) =>
+  function paintAlarms(alarms) {
+    const worst = alarms.reduce((carried, alarm) =>
       alarm.severity === "down" ? "down"
         : (carried === "down" ? carried : (alarm.severity === "degraded" ? "degraded" : carried)), "healthy");
 
     const box = byId("alarm-box"), lamp = byId("alarm-led"),
           title = byId("alarm-title"), text = byId("alarm-text"), count = byId("alarm-count");
 
-    if (state.alarms.length === 0) {
+    if (alarms.length === 0) {
       box.setAttribute("stroke", COLOURS.healthy);
       box.setAttribute("fill", ALARM_GROUND.healthy);
       lamp.setAttribute("fill", COLOURS.healthy);
@@ -384,36 +469,255 @@
       lamp.setAttribute("fill", hue);
       title.setAttribute("fill", hue);
       title.textContent = worst === "down" ? "ALARM" : "WARNING";
-      text.textContent = state.alarms[0].text;
+      text.textContent = alarms[0].text;
       text.setAttribute("fill", "#e6eef4");
-      count.textContent = state.alarms.length + " ACTIVE";
+      count.textContent = alarms.length + " ACTIVE";
+    }
+  }
+
+  function paint(state) {
+    paintNodes(state.nodes);
+    paintGauges(state.gauges);
+    paintAlarms(state.alarms);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Motion
+  //
+  // Every gate below is load-bearing rather than polish. A hidden tab painting
+  // animations, or five hundred dots for five hundred orders, is how a panel
+  // becomes the reason a laptop fan spins up.
+  // ---------------------------------------------------------------------------
+
+  function light(edgeId) {
+    const line = byId(edgeId);
+    if (!line) return;
+
+    line.classList.add("lit");
+    litUntil.set(edgeId, Date.now() + LIT_MILLISECONDS);
+
+    if (motionAllowed && line.classList.contains("line-async")) {
+      line.classList.add("flowing");
     }
 
-    byId("stamp").textContent = new Date(state.generated_at).toLocaleTimeString();
+    window.setTimeout(() => {
+      // Another message may have arrived meanwhile and pushed the expiry out.
+      if ((litUntil.get(edgeId) || 0) <= Date.now()) {
+        line.classList.remove("lit", "flowing");
+        litUntil.delete(edgeId);
+      }
+    }, LIT_MILLISECONDS + 20);
+  }
+
+  /// Sends one dot along a real path, using the path itself as the route.
+  ///
+  /// `mpath` references the drawn element, so the geometry is never duplicated
+  /// into a stylesheet that then has to be kept in step by hand. No rotation:
+  /// these are right-angled polylines and a rotating marker snaps at each corner.
+  function sendDot(edgeId) {
+    if (!motionAllowed) return;
+    const line = byId(edgeId);
+    if (!line) return;
+
+    const svg = line.ownerSVGElement;
+    const namespace = "http://www.w3.org/2000/svg";
+
+    const dot = document.createElementNS(namespace, "circle");
+    dot.setAttribute("r", "4");
+    dot.setAttribute("fill", "#d9c2ff");
+    // Decorative. The drawing carries a written description for anyone who
+    // cannot see it, and moving dots must not enter that description.
+    dot.setAttribute("aria-hidden", "true");
+
+    const motion = document.createElementNS(namespace, "animateMotion");
+    motion.setAttribute("dur", "0.5s");
+    motion.setAttribute("fill", "remove");
+
+    const route = document.createElementNS(namespace, "mpath");
+    route.setAttribute("href", "#" + edgeId);
+
+    motion.appendChild(route);
+    dot.appendChild(motion);
+    svg.appendChild(dot);
+
+    motion.addEventListener("endEvent", () => dot.remove());
+    // A tab hidden mid-flight never fires endEvent, so remove it regardless.
+    window.setTimeout(() => dot.remove(), 900);
+  }
+
+  function animate(edges) {
+    if (document.visibilityState !== "visible") return;
+
+    const touched = new Set(edges.map((edge) => edge.id));
+
+    // A command path is staggered left to right. That is honest as well as
+    // legible: the tap observes the relay's publish, so the upstream hops
+    // genuinely did happen a moment earlier.
+    if (touched.has("edge-commands-worker")) {
+      COMMAND_EDGES.forEach((edgeId, position) => {
+        window.setTimeout(() => light(edgeId), position * STAGGER_MILLISECONDS);
+      });
+    }
+
+    // An event lights all three of its lines from the same message, so the two
+    // subscriber lines start together. One event, two copies, at once.
+    if (touched.has("edge-worker-events")) {
+      EVENT_EDGES.forEach(light);
+      DOTTED_EDGES.forEach(sendDot);
+    }
+
+    DEAD_LETTER_EDGES.forEach((edgeId) => {
+      if (touched.has(edgeId)) light(edgeId);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // The three indicators
+  // ---------------------------------------------------------------------------
+
+  function showConnection(label, stale) {
     const connection = byId("connection");
-    connection.innerHTML = state.sources_ok
-      ? '<span id="beat">&#9679;</span> LIVE'
-      : '<span id="beat">&#9679;</span> SOURCE LOST';
-    connection.className = state.sources_ok ? "" : "stale";
+    // Rewriting the markup restarts the heartbeat animation, which keeps it in
+    // step with the messages rather than free-running.
+    connection.innerHTML = '<span id="beat">&#9679;</span> ' + label;
+    connection.className = stale ? "stale" : "";
   }
 
-  async function tick() {
-    try {
-      const response = await fetch("/api/state", { cache: "no-store" });
-      if (!response.ok) throw new Error(response.status);
-      paint(await response.json());
-    } catch {
-      // A failed poll must not blank the panel. Keep the last good picture and
-      // say the feed is stale - an empty screen is indistinguishable from a
-      // healthy system with nothing happening.
-      const connection = byId("connection");
-      connection.textContent = "NO FEED";
-      connection.className = "stale";
+  function showAges(tick) {
+    const lamps = byId("age-lamps");
+    if (tick.prometheus_age_milliseconds < LAMPS_FRESH_MILLISECONDS) {
+      lamps.textContent = "live";
+      lamps.style.color = "";
+    } else {
+      lamps.textContent = Math.round(tick.prometheus_age_milliseconds / 1000) + " seconds ago";
+      lamps.style.color = COLOURS.degraded;
+    }
+
+    const flow = byId("age-flow");
+    flow.textContent = tick.live_ok ? "live" : "not connected";
+    flow.style.color = tick.live_ok ? "" : COLOURS.degraded;
+    // The time since the last message belongs here rather than in the headline.
+    // On a genuinely idle system that number is large and perfectly healthy, and
+    // putting it on the strip would train people to ignore an amber panel.
+    flow.title = tick.last_message_age_milliseconds === null
+      ? "no message seen since this panel started"
+      : "last message " + Math.round(tick.last_message_age_milliseconds / 1000) + " seconds ago";
+  }
+
+  // ---------------------------------------------------------------------------
+  // The feed
+  // ---------------------------------------------------------------------------
+
+  function handle(message) {
+    // A restarted server means the numbering starts again and this browser's
+    // held value means nothing. Same recovery either way; only one deserves a
+    // log line.
+    if (epoch !== null && message.epoch !== epoch && message.epoch !== "00000000-0000-0000-0000-000000000000") {
+      console.info("[mimic] the service restarted; resynchronising");
+      lastSeq = -1;
+    }
+    if (message.epoch !== "00000000-0000-0000-0000-000000000000") epoch = message.epoch;
+
+    // A frame sent on connect or after a lag carries sequence 0 deliberately:
+    // it is a fresh whole picture and always applies.
+    if (message.seq !== 0 && message.seq <= lastSeq) return;
+    if (message.seq !== 0) lastSeq = message.seq;
+
+    if (message.type === "frame") {
+      paint(message.state);
+    } else if (message.type === "pulse") {
+      paintGauges(message.gauges);
+      animate(message.edges);
+    } else if (message.type === "tick") {
+      showAges(message);
+      showConnection("LIVE", false);
     }
   }
 
-  tick();
-  setInterval(tick, POLL_MILLISECONDS);
+  // A socket that half-opens produces silence, not an error - no event fires at
+  // all. The socket's own error handling therefore cannot be the only guard.
+  // Never blank the panel: an empty screen is indistinguishable from a healthy
+  // system with nothing happening.
+  function armWatchdog() {
+    window.clearTimeout(watchdog);
+    watchdog = window.setTimeout(() => showConnection("NO FEED", true), WATCHDOG_MILLISECONDS);
+  }
+
+  function connect() {
+    if (sampling) return;
+
+    const scheme = location.protocol === "https:" ? "wss://" : "ws://";
+    socket = new WebSocket(scheme + location.host + "/api/live");
+
+    socket.onopen = () => {
+      failedOpens = 0;
+      backoff = 500;
+      showConnection("LIVE", false);
+      armWatchdog();
+    };
+
+    socket.onmessage = (event) => {
+      armWatchdog();
+      try {
+        handle(JSON.parse(event.data));
+      } catch (error) {
+        console.warn("[mimic] could not read a message", error);
+      }
+    };
+
+    socket.onclose = () => {
+      showConnection("NO FEED", true);
+      failedOpens += 1;
+
+      // Three failures suggests something structural - a proxy stripping the
+      // upgrade header, most often - so fall back to asking rather than
+      // retrying a socket that will not open.
+      if (failedOpens >= 3) {
+        startSampling();
+        return;
+      }
+
+      // Jitter, so twenty tabs waking from a suspended machine do not all
+      // reconnect in the same instant.
+      const jittered = backoff * (0.8 + Math.random() * 0.4);
+      window.setTimeout(connect, jittered);
+      backoff = Math.min(backoff * 2, 10000);
+    };
+
+    socket.onerror = () => socket.close();
+  }
+
+  // The reason /api/state is kept rather than deprecated.
+  function startSampling() {
+    if (sampling) return;
+    console.info("[mimic] falling back to sampling; the socket would not open");
+    showConnection("SAMPLED", true);
+
+    sampling = window.setInterval(async () => {
+      try {
+        const response = await fetch("/api/state", { cache: "no-store" });
+        if (!response.ok) throw new Error(response.status);
+        paint(await response.json());
+        showConnection("SAMPLED", true);
+      } catch {
+        showConnection("NO FEED", true);
+      }
+    }, 1000);
+  }
+
+  // A sleeping laptop is the case where the socket is dead and nothing said so.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (sampling) return;
+    if (!socket || socket.readyState === WebSocket.CLOSED) {
+      backoff = 500;
+      failedOpens = 0;
+      connect();
+    }
+  });
+
+  connect();
+  armWatchdog();
 </script>
 </body>
 </html>
