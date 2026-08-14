@@ -45,5 +45,6 @@
     <None Include="$(MSBuildThisFileDirectory)mimic-service\src\main.rs" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\src\collect.rs" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\assets\panel.html" />
+    <None Include="$(MSBuildThisFileDirectory)mimic-service\assets\console.html" />
   </ItemGroup>
 </Project>

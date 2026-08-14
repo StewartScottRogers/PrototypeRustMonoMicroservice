@@ -40,8 +40,18 @@ const DEFAULT_PORT: u16 = 8080;
 /// generate the same query load as one.
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
 
-/// The page, baked into the binary at compile time.
+/// The mimic panel, baked into the binary at compile time.
 const PANEL_HTML: &str = include_str!("../assets/panel.html");
+
+/// The console shell that frames every tool.
+const CONSOLE_HTML: &str = include_str!("../assets/console.html");
+
+/// The written walkthrough, served so the console can frame it.
+///
+/// A `file://` link would work on this machine only, and could not be framed by
+/// a page served over http. Serving it makes the console self-contained and
+/// reachable from any machine on the network.
+const DOCS_HTML: &str = include_str!("../../../docs/messaging-and-eventing.html");
 
 /// The most recent snapshot, shared between the poller and every request.
 ///
@@ -85,10 +95,34 @@ async fn main() -> Result<()> {
         });
     }
 
+    // Where the browser should go for each external tool. Read from the
+    // environment because these are *published host ports*, which compose
+    // decides and this process cannot discover.
+    let links = Links {
+        grafana: std::env::var("GRAFANA_URL")
+            .unwrap_or_else(|_| "http://localhost:3000".to_owned()),
+        jaeger: std::env::var("JAEGER_URL").unwrap_or_else(|_| "http://localhost:16686".to_owned()),
+        prometheus: std::env::var("PROMETHEUS_UI_URL")
+            .unwrap_or_else(|_| "http://localhost:9090".to_owned()),
+    };
+
     let app = Router::new()
-        .route("/", get(panel))
+        // The console is the front door; the mimic is its first tab.
+        .route("/", get(console))
+        .route("/mimic", get(panel))
+        .route("/docs", get(docs))
         .route("/api/state", get(state))
         .with_state(shared)
+        .route(
+            "/api/links",
+            get({
+                let links = links.clone();
+                move || {
+                    let links = links.clone();
+                    async move { Json(links) }
+                }
+            }),
+        )
         .merge(health_routes(SERVICE))
         .merge(service_core::metrics_routes());
 
@@ -107,9 +141,30 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Serves the panel itself.
+/// Browser-facing URLs for the tools this service does not host.
+///
+/// `Clone` because each route handler needs its own copy; the struct is three
+/// short strings, so copying it per request costs nothing worth measuring.
+#[derive(Clone, serde::Serialize)]
+struct Links {
+    grafana: String,
+    jaeger: String,
+    prometheus: String,
+}
+
+/// Serves the console shell that frames everything.
+async fn console() -> Html<&'static str> {
+    Html(CONSOLE_HTML)
+}
+
+/// Serves the mimic panel itself.
 async fn panel() -> Html<&'static str> {
     Html(PANEL_HTML)
+}
+
+/// Serves the written walkthrough.
+async fn docs() -> Html<&'static str> {
+    Html(DOCS_HTML)
 }
 
 /// Serves the current snapshot as JSON, which is what the page polls.

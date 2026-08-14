@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Platform Console</title>
+<style>
+  /* Same visual world as the mimic panel it frames, so moving between tabs
+     does not feel like changing application. Single dark theme, painted
+     explicitly rather than inherited. */
+  :root {
+    --void:#05080b; --ground:#080d12; --panel:#0d151c; --panel-2:#101a22;
+    --edge:#263945; --edge-hi:#3a5464;
+    --ink:#c7d8e4; --dim:#6d8496; --far:#4a5f6e;
+    --ok:#2fd98a; --warn:#ffb020; --fail:#ff4a4a; --unknown:#5a6b78;
+    --mono:"Cascadia Mono",Consolas,"SF Mono",Menlo,"DejaVu Sans Mono",monospace;
+    --rail: 15rem;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--void);color:var(--ink);font-family:var(--mono);
+    margin:0;display:grid;grid-template-rows:auto 1fr;height:100vh;overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---- status strip ---- */
+  header{
+    display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;align-items:center;
+    padding:.7rem 1rem;background:var(--ground);border-bottom:1px solid var(--edge);
+  }
+  .brand{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  .brand b{color:var(--ink);font-weight:600}
+  .stats{display:flex;flex-wrap:wrap;gap:1.25rem;margin-left:auto;align-items:center;font-size:.75rem}
+  .stat{display:flex;align-items:center;gap:.45rem;color:var(--dim)}
+  .dot{width:.6rem;height:.6rem;border-radius:50%;background:var(--unknown);flex:none}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)}
+  .dot.fail{background:var(--fail)} .dot.unknown{background:var(--unknown)}
+  #alarm-line{color:var(--ok);max-width:38rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #alarm-line.warn{color:var(--warn)} #alarm-line.fail{color:var(--fail)}
+
+  /* ---- body: rail + frame ---- */
+  main{display:grid;grid-template-columns:var(--rail) 1fr;min-height:0}
+  nav{
+    background:var(--ground);border-right:1px solid var(--edge);
+    padding:.75rem .5rem;display:flex;flex-direction:column;gap:.15rem;overflow-y:auto;
+  }
+  .grp{font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--far);padding:.9rem .6rem .35rem}
+  button.tab{
+    appearance:none;width:100%;text-align:left;cursor:pointer;
+    background:transparent;border:1px solid transparent;color:var(--dim);
+    font-family:inherit;font-size:.82rem;padding:.55rem .6rem;
+    display:flex;align-items:center;gap:.5rem;
+  }
+  button.tab:hover{background:var(--panel);color:var(--ink)}
+  button.tab:focus-visible{outline:2px solid var(--ok);outline-offset:-2px}
+  button.tab[aria-selected="true"]{background:var(--panel-2);border-color:var(--edge-hi);color:var(--ink)}
+  button.tab .key{margin-left:auto;font-size:.68rem;color:var(--far)}
+  .rail-foot{margin-top:auto;padding:.75rem .6rem;font-size:.65rem;line-height:1.6;color:var(--far);border-top:1px solid var(--edge)}
+  .rail-foot a{color:var(--dim)}
+
+  .stage{position:relative;min-width:0;min-height:0;background:var(--void)}
+  iframe{width:100%;height:100%;border:0;display:block;background:var(--void)}
+  .pop{
+    position:absolute;top:.6rem;right:.85rem;z-index:3;
+    background:rgba(13,21,28,.92);border:1px solid var(--edge-hi);color:var(--dim);
+    font-family:inherit;font-size:.7rem;padding:.35rem .6rem;text-decoration:none;
+  }
+  .pop:hover{color:var(--ink);border-color:var(--ok)}
+
+  /* Shown instead of the frame when a tool refuses to be embedded. Degrading
+     to a button beats showing a blank rectangle and no explanation. */
+  .blocked{
+    position:absolute;inset:0;display:none;place-content:center;text-align:center;
+    padding:2rem;gap:.9rem;
+  }
+  .blocked.show{display:grid}
+  .blocked h2{font-size:1rem;margin:0;color:var(--ink);font-weight:600}
+  .blocked p{margin:0;font-size:.8rem;line-height:1.7;color:var(--dim);max-width:32rem}
+  .blocked a{
+    justify-self:center;border:1px solid var(--ok);color:var(--ok);
+    padding:.5rem 1.1rem;text-decoration:none;font-size:.8rem;
+  }
+  .blocked a:hover{background:rgba(47,217,138,.1)}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">Order Platform &middot; <b>Console</b></span>
+  <div class="stats">
+    <span class="stat"><span class="dot" id="dot-health"></span><span id="svc-line">checking…</span></span>
+    <span class="stat"><span class="dot" id="dot-alarm"></span><span id="alarm-line">—</span></span>
+    <span class="stat" id="stamp-line">—</span>
+  </div>
+</header>
+
+<main>
+  <nav id="rail" role="tablist" aria-label="Tools"></nav>
+  <div class="stage">
+    <a class="pop" id="pop" href="#" target="_blank" rel="noopener">open in tab &#8599;</a>
+    <iframe id="stage" title="Selected tool" src="/mimic"></iframe>
+    <div class="blocked" id="blocked">
+      <h2 id="blocked-title">This tool will not embed</h2>
+      <p id="blocked-body"></p>
+      <a id="blocked-link" href="#" target="_blank" rel="noopener">Open it in a new tab &#8599;</a>
+    </div>
+  </div>
+</main>
+
+<script>
+  // Tabs are declared here and their URLs filled in from /api/links, because
+  // the external ones are published host ports that compose decides - this
+  // page cannot know them, and hardcoding 3000 breaks the moment someone sets
+  // GRAFANA_PORT.
+  const TABS = [
+    { id:"mimic",   label:"Mimic panel",  group:"This stack", url:"/mimic", local:true },
+    { id:"docs",    label:"Walkthrough",  group:"This stack", url:"/docs",  local:true },
+    { id:"grafana", label:"Grafana",      group:"Observability", key:"grafana" },
+    { id:"jaeger",  label:"Traces",       group:"Observability", key:"jaeger" },
+    { id:"prom",    label:"Prometheus",   group:"Observability", key:"prometheus" },
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  let current = TABS[0];
+
+  function buildRail() {
+    const rail = $("rail");
+    rail.innerHTML = "";
+    let group = null;
+
+    TABS.forEach((tab, index) => {
+      if (tab.group !== group) {
+        group = tab.group;
+        const heading = document.createElement("div");
+        heading.className = "grp";
+        heading.textContent = group;
+        rail.append(heading);
+      }
+
+      const button = document.createElement("button");
+      button.className = "tab";
+      button.type = "button";
+      button.role = "tab";
+      button.id = "tab-" + tab.id;
+      button.setAttribute("aria-selected", tab === current ? "true" : "false");
+      button.innerHTML = '<span>' + tab.label + '</span><span class="key">' + (index + 1) + '</span>';
+      button.addEventListener("click", () => select(tab));
+      rail.append(button);
+    });
+
+    const foot = document.createElement("div");
+    foot.className = "rail-foot";
+    foot.innerHTML = "1&ndash;5 switches tabs<br>DevConsole.cmd reopens this";
+    rail.append(foot);
+  }
+
+  function select(tab) {
+    current = tab;
+    for (const other of TABS) {
+      const button = $("tab-" + other.id);
+      if (button) button.setAttribute("aria-selected", String(other === tab));
+    }
+
+    const blocked = $("blocked");
+    const stage = $("stage");
+
+    if (!tab.url) {
+      // /api/links has not answered yet, or this tool has no URL configured.
+      blocked.classList.add("show");
+      $("blocked-title").textContent = tab.label + " is not configured";
+      $("blocked-body").textContent =
+        "No URL was supplied for this tool. Check the environment passed to mimic-service in compose.yaml.";
+      $("blocked-link").href = "#";
+      return;
+    }
+
+    blocked.classList.remove("show");
+    stage.src = tab.url;
+    $("pop").href = tab.url;
+    document.title = tab.label + " — Order Platform Console";
+
+    // Anything that refuses framing paints nothing and fires no error we can
+    // catch, so give it a moment and then check whether it drew. A visible
+    // explanation with a working button beats a silent blank rectangle.
+    if (!tab.local) {
+      clearTimeout(select._timer);
+      select._timer = setTimeout(() => {
+        let painted = false;
+        try {
+          painted = stage.contentWindow.length >= 0 && stage.contentDocument !== null
+            ? true            // same-origin and readable
+            : true;           // cross-origin but loaded
+        } catch {
+          painted = true;     // cross-origin throws on access, which means it loaded
+        }
+        if (!painted) showBlocked(tab);
+      }, 2500);
+    }
+  }
+
+  function showBlocked(tab) {
+    $("blocked").classList.add("show");
+    $("blocked-title").textContent = tab.label + " will not embed";
+    $("blocked-body").textContent =
+      "It is sending a header that forbids being shown inside another page. Nothing is wrong with the service itself.";
+    $("blocked-link").href = tab.url;
+  }
+
+  async function loadLinks() {
+    try {
+      const links = await (await fetch("/api/links", { cache: "no-store" })).json();
+      for (const tab of TABS) if (tab.key) tab.url = links[tab.key];
+    } catch {
+      // Leave the external tabs without URLs; select() explains rather than
+      // opening a broken frame.
+    }
+    buildRail();
+    select(current);
+  }
+
+  function paintStatus(state) {
+    const worst = state.nodes.reduce((acc, node) =>
+      node.status === "down" ? "down"
+        : acc === "down" ? acc
+        : node.status === "degraded" ? "degraded"
+        : node.status === "unknown" && acc === "healthy" ? "unknown" : acc, "healthy");
+
+    const healthy = state.nodes.filter((n) => n.status === "healthy").length;
+    $("svc-line").textContent = healthy + " of " + state.nodes.length + " healthy";
+    $("dot-health").className = "dot " +
+      (worst === "healthy" ? "ok" : worst === "degraded" ? "warn" : worst === "down" ? "fail" : "unknown");
+
+    const line = $("alarm-line");
+    if (state.alarms.length === 0) {
+      line.textContent = "no active alarms";
+      line.className = "";
+      $("dot-alarm").className = "dot ok";
+    } else {
+      const severity = state.alarms.some((a) => a.severity === "down") ? "fail" : "warn";
+      line.textContent = state.alarms[0].text +
+        (state.alarms.length > 1 ? "  (+" + (state.alarms.length - 1) + " more)" : "");
+      line.className = severity;
+      $("dot-alarm").className = "dot " + severity;
+    }
+
+    $("stamp-line").textContent = state.sources_ok
+      ? new Date(state.generated_at).toLocaleTimeString()
+      : "source lost";
+  }
+
+  async function pollStatus() {
+    try {
+      paintStatus(await (await fetch("/api/state", { cache: "no-store" })).json());
+    } catch {
+      $("svc-line").textContent = "no feed";
+      $("dot-health").className = "dot unknown";
+      $("stamp-line").textContent = "—";
+    }
+  }
+
+  document.addEventListener("keydown", (event) => {
+    // Digits switch tabs, but not while someone is typing into a framed tool.
+    if (event.target !== document.body) return;
+    const index = Number(event.key) - 1;
+    if (Number.isInteger(index) && TABS[index]) select(TABS[index]);
+  });
+
+  loadLinks();
+  pollStatus();
+  setInterval(pollStatus, 3000);
+</script>
+</body>
+</html>
