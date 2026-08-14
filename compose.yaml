@@ -223,6 +223,30 @@ services:
     # is the correct trade for observability.
     restart: unless-stopped
 
+  # A live control-room mimic of this stack: http://localhost:8090
+  #
+  # Grafana shows the numbers better. What this adds is shape - which component
+  # is amber and what sits downstream of it - which a row of graphs cannot.
+  mimic-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: mimic-service
+    image: prototype-rust/mimic-service:dev
+    environment:
+      <<: *service-environment
+      PORT: 8080
+      PROMETHEUS_URL: http://prometheus:9090
+      NATS_MONITOR_URL: http://nats:8222
+    ports:
+      - "${MIMIC_PORT:-8090}:8080"
+    depends_on:
+      prometheus: { condition: service_healthy }
+      nats: { condition: service_healthy }
+    healthcheck: *service-healthcheck
+
   # Scrapes /metrics from every service every 5 seconds. That interval is far
   # more frequent than production would use; a demo you have to wait a minute
   # to see react is not a demo.

@@ -1,0 +1,128 @@
+//! A live control-room mimic of this stack.
+//!
+//! Serves one page at `/` showing the real topology, with lamps and gauges
+//! driven by Prometheus and the NATS monitoring endpoint. Open it at
+//! <http://localhost:8090>.
+//!
+//! # What this is for
+//!
+//! Grafana already shows the numbers, and shows them better — history, zoom,
+//! ad-hoc queries. What it cannot show is *shape*: which component is amber,
+//! and what sits downstream of it. A mimic panel trades analytical depth for
+//! one glance that answers "what is wrong and what does it affect".
+//!
+//! # Reading this file as a Rust newcomer
+//!
+//! The page is embedded with `include_str!`, which reads the file **at compile
+//! time** and bakes the contents into the binary as a `&'static str`. That is
+//! why the runtime image needs no assets directory — which matters, because a
+//! distroless image has no filesystem to speak of.
+
+mod collect;
+
+use anyhow::{Context as _, Result};
+use axum::extract::State;
+use axum::response::{Html, IntoResponse};
+use axum::{Json, Router, routing::get};
+use collect::{Collector, Snapshot};
+use service_core::{health_routes, init_tracing, port_from_env, self_check};
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+const SERVICE: &str = "mimic-service";
+const DEFAULT_PORT: u16 = 8080;
+
+/// How often the background poller refreshes the picture.
+///
+/// The browser polls this service, and this service polls Prometheus. One
+/// collector serving every open tab means twenty people watching the panel
+/// generate the same query load as one.
+const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// The page, baked into the binary at compile time.
+const PANEL_HTML: &str = include_str!("../assets/panel.html");
+
+/// The most recent snapshot, shared between the poller and every request.
+///
+/// `Arc<RwLock<T>>` is the standard shape for "one value, many readers, rare
+/// writer": `Arc` lets several tasks own it, `RwLock` lets any number read at
+/// once but only one write at a time.
+type Shared = Arc<RwLock<Snapshot>>;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let port = port_from_env("PORT", DEFAULT_PORT);
+
+    if std::env::args().nth(1).as_deref() == Some("healthcheck") {
+        std::process::exit(if self_check(port) { 0 } else { 1 });
+    }
+
+    init_tracing(SERVICE);
+    service_core::init_metrics(SERVICE);
+
+    let prometheus_url =
+        std::env::var("PROMETHEUS_URL").unwrap_or_else(|_| "http://prometheus:9090".to_owned());
+    let nats_monitor_url =
+        std::env::var("NATS_MONITOR_URL").unwrap_or_else(|_| "http://nats:8222".to_owned());
+
+    let collector = Collector::new(prometheus_url.clone(), nats_monitor_url.clone());
+
+    // Take one reading before serving, so the first visitor sees real data
+    // rather than an empty panel that fills in three seconds later.
+    let shared: Shared = Arc::new(RwLock::new(collector.snapshot().await));
+
+    // The poller owns its own clones and runs for the life of the process.
+    {
+        let collector = collector.clone();
+        let shared = Arc::clone(&shared);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(POLL_INTERVAL).await;
+                let snapshot = collector.snapshot().await;
+                *shared.write().await = snapshot;
+            }
+        });
+    }
+
+    let app = Router::new()
+        .route("/", get(panel))
+        .route("/api/state", get(state))
+        .with_state(shared)
+        .merge(health_routes(SERVICE))
+        .merge(service_core::metrics_routes());
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .context("could not bind the mimic port")?;
+
+    tracing::info!(%addr, prometheus = %prometheus_url, "mimic panel listening");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .context("the mimic server stopped")?;
+
+    Ok(())
+}
+
+/// Serves the panel itself.
+async fn panel() -> Html<&'static str> {
+    Html(PANEL_HTML)
+}
+
+/// Serves the current snapshot as JSON, which is what the page polls.
+///
+/// Reads the shared value rather than querying Prometheus, so the cost of an
+/// extra browser tab is one JSON serialisation.
+async fn state(State(shared): State<Shared>) -> impl IntoResponse {
+    let snapshot = shared.read().await.clone();
+    Json(snapshot)
+}
+
+async fn shutdown_signal() {
+    if tokio::signal::ctrl_c().await.is_ok() {
+        tracing::info!("shutdown signal received");
+    }
+}
