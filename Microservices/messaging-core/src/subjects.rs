@@ -42,3 +42,7 @@ pub const CONSUMER_WORKER: &str = "order-worker";
 pub const CONSUMER_NOTIFIER: &str = "order-notifier";
 /// See [`CONSUMER_NOTIFIER`].
 pub const CONSUMER_AUDIT: &str = "order-audit";
+
+/// Used by the `dlq-replay` tool to drain the dead-letter stream. Durable so a
+/// half-finished drain resumes where it stopped rather than starting over.
+pub const CONSUMER_DLQ_REPLAY: &str = "order-dlq-replay";

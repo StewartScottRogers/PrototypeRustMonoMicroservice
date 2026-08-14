@@ -91,10 +91,19 @@ impl Messaging {
     {
         let payload = serde_json::to_vec(envelope).context("could not encode the message")?;
 
-        // Stamp the current trace context into the headers so the consumer can
-        // continue this trace rather than starting an unrelated one.
+        // Stamp trace context into the headers so the consumer continues this
+        // trace rather than starting an unrelated one.
+        //
+        // The envelope's own stored context wins when it has one. That matters
+        // for the relay: the span it publishes under belongs to the relay, but
+        // the trace that should own the message belongs to the HTTP request
+        // that created the outbox row, possibly minutes earlier.
         let mut headers = async_nats::HeaderMap::new();
-        crate::trace::inject_current(&mut headers);
+        if envelope.trace.is_empty() {
+            crate::trace::inject_current(&mut headers);
+        } else {
+            crate::trace::inject_map(&mut headers, &envelope.trace);
+        }
 
         self.jetstream
             .publish_with_headers(subject, headers, payload.into())
@@ -104,6 +113,35 @@ impl Messaging {
             .with_context(|| format!("{subject} was not acknowledged by JetStream"))?;
 
         tracing::info!(subject, message_id = %envelope.id, kind = %envelope.kind, "published");
+        Ok(())
+    }
+
+    /// Deletes a durable consumer if it exists.
+    ///
+    /// `get_or_create_consumer` returns an existing consumer *as it is* — it
+    /// never reconciles a changed config. A tool whose settings have been
+    /// corrected therefore keeps running under the old ones until something
+    /// removes the consumer. For a one-shot tool, starting clean every time is
+    /// simpler than reasoning about which settings drifted.
+    ///
+    /// A consumer that does not exist is not an error; that is the desired end
+    /// state either way.
+    pub async fn delete_consumer(
+        &self,
+        stream_name: &'static str,
+        durable_name: &str,
+    ) -> Result<()> {
+        let stream = self
+            .jetstream
+            .get_stream(stream_name)
+            .await
+            .with_context(|| format!("stream {stream_name} does not exist"))?;
+
+        match stream.delete_consumer(durable_name).await {
+            Ok(_) => tracing::info!(consumer = durable_name, "removed the previous consumer"),
+            Err(error) => tracing::debug!(%error, consumer = durable_name, "no consumer to remove"),
+        }
+
         Ok(())
     }
 

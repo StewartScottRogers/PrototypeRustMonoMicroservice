@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "Branch protection for master, kept in version control because GitHub will",
+    "not accept it yet: rulesets and classic branch protection both require",
+    "GitHub Pro or a public repository, and this one is private on a free plan.",
+    "",
+    "Apply it with .github/scripts/arm-gates.sh once either of those changes.",
+    "Until then every check still runs and reports - nothing enforces them."
+  ],
+  "name": "master",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }
+  ],
+  "conditions": {
+    "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] }
+  },
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": ["merge", "squash", "rebase"]
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          { "context": "CI OK" },
+          { "context": "Image OK" },
+          { "context": "Security OK" }
+        ]
+      }
+    }
+  ]
+}

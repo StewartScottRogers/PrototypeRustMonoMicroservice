@@ -23,7 +23,6 @@ use anyhow::Context as _;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::{Json, Router, routing::post};
-use messaging_core::Messaging;
 use orders::OrderState;
 use serde::{Deserialize, Serialize};
 use service_core::{health_routes, init_tracing, port_from_env, self_check};
@@ -216,17 +215,10 @@ async fn main() -> anyhow::Result<()> {
 
     let database_url = std::env::var("DATABASE_URL")
         .context("DATABASE_URL must be set - the outbox lives in Postgres")?;
-    let nats_url = std::env::var("NATS_URL").unwrap_or_else(|_| "nats://nats:4222".to_owned());
 
+    // This service only *writes* the outbox. Publishing is outbox-relay's job,
+    // so there is no broker connection here at all.
     let pool = db_core::connect_and_migrate(&database_url).await?;
-    let messaging = Messaging::connect(&nats_url).await?;
-    messaging.ensure_streams().await?;
-
-    // The relay runs alongside the HTTP server for the life of the process.
-    // `tokio::spawn` puts it on its own task; without it, the loop would never
-    // yield back to the server.
-    tokio::spawn(orders::relay(pool.clone(), messaging));
-
     let order_state = OrderState { pool };
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));

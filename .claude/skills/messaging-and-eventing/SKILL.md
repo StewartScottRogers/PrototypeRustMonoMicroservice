@@ -115,18 +115,53 @@ curl -s "http://localhost:16686/api/traces?service=worker-service&limit=1"
 - **Inspect the streams**: `http://localhost:8222/jsz?streams=1` on the NATS
   monitoring port shows message counts per stream, including the DLQ.
 
+## Schema versions
+
+Every envelope carries `schema_version`. The rule: **additive changes keep the
+version; anything that could break an existing reader increments it.** Adding an
+optional field is additive; renaming, removing or retyping one is not.
+
+This matters because a stream holds messages for as long as its retention says,
+so a deploy puts two payload shapes in flight at once. A consumer meeting an
+unsupported version must not guess — the worker dead-letters it, the subscribers
+log and skip. Dropping it loses data; processing it risks acting on a misread
+payload.
+
+Messages written before versioning existed decode as version 1, via
+`#[serde(default)]`.
+
+## Draining the dead-letter queue
+
+```
+DevReplay.cmd --dry-run   list what is parked, change nothing
+DevReplay.cmd             move it all back onto the command subject
+```
+
+Run it **after** fixing the cause. Replaying first just refills the queue —
+which the tool will happily demonstrate.
+
+It is a one-shot tool rather than a service on purpose. Automatic replay loops
+forever while looking like progress, because a message is dead-lettered
+precisely for failing repeatedly.
+
+Two things it learned the hard way, both worth keeping:
+
+- **Unlimited redelivery** (`max_deliver: -1`). Anything finite means a failed
+  or abandoned drain permanently strands the messages you least wanted to lose.
+  An earlier version used `1`, and a single dry run made the queue undrainable.
+- **A dry run Naks with a delay.** A bare `Nak` redelivers immediately, so the
+  drain loop keeps meeting the same messages and never reaches its idle timeout.
+
+The tool deletes and recreates its own consumer each run, because
+`get_or_create_consumer` returns an existing consumer *as it is* and never
+reconciles a changed config — corrected settings would otherwise never apply.
+
 ## Known gaps
 
-1. **The outbox breaks the trace.** The HTTP request commits and returns; the
-   relay publishes later on a different task, so it starts a new trace. Fixing
-   it means persisting the `traceparent` in the outbox row and restoring it in
-   the relay.
-2. **The relay lives inside the gateway.** Fine at this size, but it means the
-   gateway cannot be scaled without two relays competing — they would cope
-   (`FOR UPDATE SKIP LOCKED`), but a separate process or change-data-capture is
-   the real answer.
-3. **Nothing drains the dead-letter stream.** Messages accumulate until a human
-   looks. A replay tool is the obvious next piece.
-4. **No schema versioning on the contracts.** A breaking change to
-   `OrderCommand` would break consumers still reading older messages from the
-   stream.
+1. **No consumer lag alerting.** Nothing notices if the worker falls behind.
+   `http://localhost:8222/jsz?consumers=1` reports `num_pending` per consumer;
+   nothing scrapes it.
+2. **The dead-letter stream has no age limit.** Messages sit there until someone
+   runs the replay tool.
+3. **Retry backoff is fixed, not escalating.** Fine for a demo; a real system
+   would widen the gap between attempts.
