@@ -105,6 +105,60 @@ fn percent_encode(input: &str) -> String {
     encoded
 }
 
+/// Decides a service's lamp from what Prometheus could tell us.
+///
+/// Pure, and separate from the HTTP call, because *this* is the part worth
+/// testing: the difference between "cannot tell" and "gone" is the whole
+/// difference between a panel people trust and one they learn to ignore.
+fn classify_service(sources_ok: bool, instances_up: Option<u32>) -> (Status, String) {
+    if !sources_ok {
+        // Prometheus itself is unreachable, so nothing can be said about
+        // anything. This is the only honest "unknown".
+        return (Status::Unknown, "no data".to_owned());
+    }
+
+    match instances_up {
+        // Prometheus is answering and has no recent series at all for a service
+        // this panel expects. That is not uncertainty - the target has vanished
+        // from discovery, which is what happens when the container stops.
+        // Reading it as "unknown" would hide an outage behind a grey lamp.
+        None => (Status::Down, "absent".to_owned()),
+        Some(0) => (Status::Down, "not responding".to_owned()),
+        Some(count) => {
+            let plural = if count == 1 { "instance" } else { "instances" };
+            (Status::Healthy, format!("{count} {plural}"))
+        }
+    }
+}
+
+/// Decides whether a reachable worker is nonetheless in trouble.
+///
+/// Returns the replacement detail line and the alarm text, or `None` when the
+/// worker is genuinely fine. Latency wins over backlog when both are breached:
+/// a slow consumer is the *cause*, and a queue building up behind it is the
+/// symptom, so naming the cause is more use to whoever is reading the alarm.
+fn classify_worker_health(p99_seconds: Option<f64>, backlog: u64) -> Option<(String, String)> {
+    if let Some(seconds) = p99_seconds.filter(|value| *value > LATENCY_WARN_SECONDS) {
+        return Some((
+            format!("p99 {:.0} ms", seconds * 1000.0),
+            format!(
+                "worker-service — p99 {:.0} ms — threshold {:.0} ms",
+                seconds * 1000.0,
+                LATENCY_WARN_SECONDS * 1000.0
+            ),
+        ));
+    }
+
+    if backlog > QUEUE_WARN_DEPTH {
+        return Some((
+            format!("{backlog} queued"),
+            format!("worker-service — {backlog} messages queued — threshold {QUEUE_WARN_DEPTH}"),
+        ));
+    }
+
+    None
+}
+
 /// Polls Prometheus and NATS.
 #[derive(Clone)]
 pub struct Collector {
@@ -279,25 +333,7 @@ impl Collector {
                 None
             };
 
-            let (status, detail) = if !sources_ok {
-                // Prometheus itself is unreachable, so nothing can be said
-                // about anything. This is the only honest "unknown".
-                (Status::Unknown, "no data".to_owned())
-            } else {
-                match up {
-                    // Prometheus is answering and has no series at all for a
-                    // service this panel expects to exist. That is not
-                    // uncertainty - the target has vanished from discovery,
-                    // which is what happens when the container stops. Reading
-                    // it as "unknown" would hide an outage behind a grey lamp.
-                    None => (Status::Down, "absent".to_owned()),
-                    Some(0) => (Status::Down, "not responding".to_owned()),
-                    Some(count) => {
-                        let plural = if count == 1 { "instance" } else { "instances" };
-                        (Status::Healthy, format!("{count} {plural}"))
-                    }
-                }
-            };
+            let (status, detail) = classify_service(sources_ok, up);
 
             if status == Status::Down {
                 alarms.push(Alarm {
@@ -320,28 +356,14 @@ impl Collector {
         if let Some(worker) = nodes
             .iter_mut()
             .find(|node| node.id == "worker" && node.status == Status::Healthy)
+            && let Some((detail, alarm)) = classify_worker_health(p99, worker_backlog)
         {
-            if let Some(seconds) = p99.filter(|value| *value > LATENCY_WARN_SECONDS) {
-                worker.status = Status::Degraded;
-                worker.detail = format!("p99 {:.0} ms", seconds * 1000.0);
-                alarms.push(Alarm {
-                    text: format!(
-                        "worker-service — p99 {:.0} ms — threshold {:.0} ms",
-                        seconds * 1000.0,
-                        LATENCY_WARN_SECONDS * 1000.0
-                    ),
-                    severity: Status::Degraded,
-                });
-            } else if worker_backlog > QUEUE_WARN_DEPTH {
-                worker.status = Status::Degraded;
-                worker.detail = format!("{worker_backlog} queued");
-                alarms.push(Alarm {
-                    text: format!(
-                        "worker-service — {worker_backlog} messages queued — threshold {QUEUE_WARN_DEPTH}"
-                    ),
-                    severity: Status::Degraded,
-                });
-            }
+            worker.status = Status::Degraded;
+            worker.detail = detail;
+            alarms.push(Alarm {
+                text: alarm,
+                severity: Status::Degraded,
+            });
         }
 
         // ---- infrastructure, inferred rather than scraped ----
@@ -515,6 +537,85 @@ mod tests {
             serde_json::to_string(&Status::Unknown).unwrap(),
             "\"unknown\""
         );
+    }
+
+    // ---- the distinction the whole panel rests on ----
+
+    #[test]
+    fn an_unreachable_prometheus_makes_everything_unknown() {
+        // Not down. We genuinely cannot tell, and saying "down" would raise a
+        // false alarm for every service at once.
+        let (status, detail) = classify_service(false, None);
+        assert_eq!(status, Status::Unknown);
+        assert_eq!(detail, "no data");
+
+        // Even a stale positive reading means nothing without a live source.
+        assert_eq!(classify_service(false, Some(3)).0, Status::Unknown);
+    }
+
+    #[test]
+    fn a_service_missing_from_a_healthy_prometheus_is_down_not_unknown() {
+        // The bug this panel was built on: a vanished target produces no series
+        // at all, and reading that as "unknown" hid a dead service behind a
+        // grey lamp for minutes.
+        let (status, detail) = classify_service(true, None);
+        assert_eq!(status, Status::Down);
+        assert_eq!(detail, "absent");
+    }
+
+    #[test]
+    fn zero_reachable_instances_is_down() {
+        let (status, detail) = classify_service(true, Some(0));
+        assert_eq!(status, Status::Down);
+        assert_eq!(detail, "not responding");
+    }
+
+    #[test]
+    fn instance_counts_read_naturally() {
+        assert_eq!(classify_service(true, Some(1)).1, "1 instance");
+        assert_eq!(classify_service(true, Some(2)).1, "2 instances");
+        assert_eq!(classify_service(true, Some(7)).1, "7 instances");
+        assert_eq!(classify_service(true, Some(1)).0, Status::Healthy);
+    }
+
+    // ---- amber ----
+
+    #[test]
+    fn a_quick_worker_with_an_empty_queue_is_not_degraded() {
+        assert!(classify_worker_health(Some(0.05), 0).is_none());
+        // No latency data yet is not a problem either.
+        assert!(classify_worker_health(None, 0).is_none());
+    }
+
+    #[test]
+    fn a_slow_worker_is_degraded() {
+        let (detail, alarm) = classify_worker_health(Some(0.85), 0).unwrap();
+        assert_eq!(detail, "p99 850 ms");
+        assert!(alarm.contains("850 ms"));
+        assert!(alarm.contains("threshold 400 ms"));
+    }
+
+    #[test]
+    fn a_backed_up_worker_is_degraded() {
+        let (detail, alarm) = classify_worker_health(Some(0.01), 500).unwrap();
+        assert_eq!(detail, "500 queued");
+        assert!(alarm.contains("500 messages queued"));
+    }
+
+    #[test]
+    fn latency_is_reported_ahead_of_backlog() {
+        // Both breached. Latency is the cause and the backlog is the symptom,
+        // so naming the cause is more use to whoever reads the alarm.
+        let (detail, _) = classify_worker_health(Some(0.9), 900).unwrap();
+        assert_eq!(detail, "p99 900 ms");
+    }
+
+    #[test]
+    fn the_thresholds_are_exclusive() {
+        // Exactly at the threshold is still fine; only above it is a problem.
+        assert!(classify_worker_health(Some(LATENCY_WARN_SECONDS), QUEUE_WARN_DEPTH).is_none());
+        assert!(classify_worker_health(Some(LATENCY_WARN_SECONDS + 0.001), 0).is_some());
+        assert!(classify_worker_health(None, QUEUE_WARN_DEPTH + 1).is_some());
     }
 
     #[test]
