@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-/// p99 processing time above this is "degraded" rather than healthy.
+/// A 99th-percentile processing time above this is "degraded", not healthy.
 const LATENCY_WARN_SECONDS: f64 = 0.4;
 
 /// Unprocessed messages waiting on a consumer before it counts as backed up.
@@ -143,9 +143,9 @@ fn classify_service(sources_ok: bool, instances_up: Option<u32>) -> (Status, Str
 fn classify_worker_health(p99_seconds: Option<f64>, backlog: u64) -> Option<(String, String)> {
     if let Some(seconds) = p99_seconds.filter(|value| *value > LATENCY_WARN_SECONDS) {
         return Some((
-            format!("p99 {:.0} ms", seconds * 1000.0),
+            format!("99th percentile {:.0} milliseconds", seconds * 1000.0),
             format!(
-                "worker-service — p99 {:.0} ms — threshold {:.0} ms",
+                "worker-service — 99th percentile {:.0} milliseconds — threshold {:.0} milliseconds",
                 seconds * 1000.0,
                 LATENCY_WARN_SECONDS * 1000.0
             ),
@@ -447,49 +447,44 @@ impl Collector {
             });
         }
 
-        // ---- the numbers on the links ----
+        // ---- the readouts ----
+        //
+        // Each value is the bare number. What it *means* is a fixed label on the
+        // panel beside it, which is why nothing here carries a unit: a readout
+        // tile has room to say "orders per second" in full, where a badge
+        // floating on an arrow had room only for an abbreviation.
         let gauges = vec![
-            self.rate_gauge(
-                "g-accepted",
-                "sum(rate(orders_accepted_total[1m]))",
-                "ord/s",
-            )
-            .await,
-            self.rate_gauge("g-relayed", "sum(rate(outbox_relayed_total[1m]))", "msg/s")
+            self.rate_gauge("g-accepted", "sum(rate(orders_accepted_total[15s]))")
+                .await,
+            self.rate_gauge("g-relayed", "sum(rate(outbox_relayed_total[15s]))")
+                .await,
+            self.rate_gauge("g-processed", "sum(rate(orders_processed_total[15s]))")
                 .await,
             self.rate_gauge(
-                "g-processed",
-                "sum(rate(orders_processed_total[1m]))",
-                "ord/s",
-            )
-            .await,
-            self.rate_gauge(
                 "g-notified",
-                "sum(rate(events_handled_total{service=\"notifier-service\"}[1m]))",
-                "evt/s",
+                "sum(rate(events_handled_total{service=\"notifier-service\"}[15s]))",
             )
             .await,
             self.rate_gauge(
                 "g-audited",
-                "sum(rate(events_handled_total{service=\"audit-service\"}[1m]))",
-                "evt/s",
+                "sum(rate(events_handled_total{service=\"audit-service\"}[15s]))",
             )
             .await,
             Gauge {
                 id: "g-queue".to_owned(),
-                value: format!("depth {worker_backlog}"),
+                value: worker_backlog.to_string(),
                 warn: worker_backlog > QUEUE_WARN_DEPTH,
             },
             Gauge {
                 id: "g-dlq".to_owned(),
-                value: format!("{dead_letters} parked"),
+                value: dead_letters.to_string(),
                 warn: dead_letters > 0,
             },
             Gauge {
                 id: "g-p99".to_owned(),
                 value: match p99 {
-                    Some(seconds) => format!("p99 {:.0} ms", seconds * 1000.0),
-                    None => "p99 —".to_owned(),
+                    Some(seconds) => format!("{:.0}", seconds * 1000.0),
+                    None => "—".to_owned(),
                 },
                 warn: p99.is_some_and(|seconds| seconds > LATENCY_WARN_SECONDS),
             },
@@ -504,11 +499,15 @@ impl Collector {
         }
     }
 
-    /// A per-second rate, formatted for a small badge.
-    async fn rate_gauge(&self, id: &str, query: &str, unit: &str) -> Gauge {
+    /// A per-second rate as a bare number, to two decimal places.
+    ///
+    /// An em dash rather than a zero when Prometheus has nothing: "no reading"
+    /// and "a reading of zero" mean different things, and a panel that shows
+    /// 0.00 for a target it cannot reach is lying quietly.
+    async fn rate_gauge(&self, id: &str, query: &str) -> Gauge {
         let value = match self.scalar(query).await {
-            Some(rate) => format!("{rate:.2} {unit}"),
-            None => format!("— {unit}"),
+            Some(rate) => format!("{rate:.2}"),
+            None => "—".to_owned(),
         };
 
         Gauge {
@@ -593,9 +592,9 @@ mod tests {
     #[test]
     fn a_slow_worker_is_degraded() {
         let (detail, alarm) = classify_worker_health(Some(0.85), 0).unwrap();
-        assert_eq!(detail, "p99 850 ms");
-        assert!(alarm.contains("850 ms"));
-        assert!(alarm.contains("threshold 400 ms"));
+        assert_eq!(detail, "99th percentile 850 milliseconds");
+        assert!(alarm.contains("850 milliseconds"));
+        assert!(alarm.contains("threshold 400 milliseconds"));
     }
 
     #[test]
@@ -610,7 +609,7 @@ mod tests {
         // Both breached. Latency is the cause and the backlog is the symptom,
         // so naming the cause is more use to whoever reads the alarm.
         let (detail, _) = classify_worker_health(Some(0.9), 900).unwrap();
-        assert_eq!(detail, "p99 900 ms");
+        assert_eq!(detail, "99th percentile 900 milliseconds");
     }
 
     #[test]
@@ -640,11 +639,11 @@ mod tests {
             nodes: vec![Node {
                 id: "worker".to_owned(),
                 status: Status::Degraded,
-                detail: "p99 850 ms".to_owned(),
+                detail: "99th percentile 850 milliseconds".to_owned(),
             }],
             gauges: vec![Gauge {
                 id: "g-queue".to_owned(),
-                value: "depth 12".to_owned(),
+                value: "12".to_owned(),
                 warn: false,
             }],
             alarms: vec![Alarm {

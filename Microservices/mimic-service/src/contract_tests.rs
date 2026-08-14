@@ -50,11 +50,11 @@ fn a_snapshot_serialises_to_the_shape_the_page_expects() {
         nodes: vec![Node {
             id: "worker".to_owned(),
             status: Status::Degraded,
-            detail: "p99 850 ms".to_owned(),
+            detail: "99th percentile 850 milliseconds".to_owned(),
         }],
         gauges: vec![Gauge {
             id: "g-queue".to_owned(),
-            value: "depth 12".to_owned(),
+            value: "12".to_owned(),
             warn: true,
         }],
         alarms: vec![Alarm {
@@ -79,7 +79,10 @@ fn a_snapshot_serialises_to_the_shape_the_page_expects() {
     // A gauge: `id` matches a text element in the drawing, `warn` picks its colour.
     let gauge = &json["gauges"][0];
     assert_eq!(gauge["id"], "g-queue");
-    assert!(gauge.get("value").is_some());
+    assert_eq!(
+        gauge["value"], "12",
+        "the panel supplies the unit; the value is the bare number"
+    );
     assert_eq!(gauge["warn"], true);
 
     // An alarm: the banner reads `text` and colours itself by `severity`.
