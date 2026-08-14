@@ -18,6 +18,15 @@
 //! why the runtime image needs no assets directory — which matters, because a
 //! distroless image has no filesystem to speak of.
 
+/// Contract tests: the shapes this service emits and accepts, checked against
+/// the shared messaging-core types with no broker and no sibling running.
+///
+/// They live in src/ rather than tests/ because this is a binary-only crate:
+/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
+/// See .claude/skills/microservice-agent-team/SKILL.md.
+#[cfg(test)]
+mod contract_tests;
+
 mod collect;
 
 use anyhow::{Context as _, Result};

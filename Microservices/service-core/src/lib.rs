@@ -26,6 +26,7 @@ pub mod config;
 pub mod health;
 pub mod metrics;
 pub mod telemetry;
+pub mod url;
 
 // `pub use` re-exports an item under a shorter path. Callers can write
 // `service_core::health_routes(...)` instead of

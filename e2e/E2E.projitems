@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Viewer-only shared project for the orchestrator-owned end-to-end crate.
+
+  `e2e/` is the one crate that lives outside Microservices/, because it is a
+  test harness rather than a service. The .projitems table in CLAUDE.md routes
+  by location and no row covers the repository root, so it gets its own viewer
+  project.
+
+  This file sits *inside* the folder it describes, the same way
+  Microservices.projitems does, so every Include below is relative to the crate
+  root with no `..` in it. (Cargo/, DevEnvironment/ and friends reach outwards
+  with `..\` because they describe files at the repository root, which has no
+  folder of its own to live in.)
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>fc3e4db9-e96e-41fe-987e-6c9879ab9159</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>E2E</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)Cargo.toml" />
+    <None Include="$(MSBuildThisFileDirectory)src\lib.rs" />
+    <None Include="$(MSBuildThisFileDirectory)tests\order_flow.rs" />
+  </ItemGroup>
+</Project>

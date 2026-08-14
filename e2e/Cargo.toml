@@ -1,0 +1,36 @@
+[package]
+name = "e2e"
+description = "Orchestrator-owned end-to-end tests. Exercises the composed stack; owned by no single service team."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+# A lib target and no bin target, on purpose:
+#
+#   - `tests/` can only import a crate's *lib*, so without this the harness
+#     would have to be copy-pasted into every test file.
+#   - no `[[bin]]` means `.github/scripts/binary-crates.sh` never discovers it,
+#     so the image workflow does not try to containerise a test harness.
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+service-core.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+# The message contracts under test. E2E asserts against the same types the
+# services use, so a contract change breaks the e2e suite loudly rather than
+# letting it drift into testing a shape nobody publishes any more.
+messaging-core.workspace = true
