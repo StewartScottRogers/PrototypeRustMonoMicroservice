@@ -11,11 +11,26 @@ description: >
 
 # Local development stack
 
-```
-you --POST /relay--> gateway-service --POST /echo--> echo-service
-                            |
-                     postgres, redis (running, not yet used by any code)
-```
+Thirteen containers: six services, NATS, Postgres, Redis, Jaeger, Prometheus, Grafana.
+
+| What | Where |
+| --- | --- |
+| Gateway | http://localhost:8080 |
+| Grafana dashboard | http://localhost:3000 (no login) |
+| Jaeger traces | http://localhost:16686 |
+| Prometheus | http://localhost:9090 |
+| NATS monitoring | http://localhost:8222/jsz?streams=1 |
+
+## The three observability views
+
+They answer different questions, and reaching for the wrong one wastes time:
+
+- **Metrics** (Grafana) — how much, how often, is it getting worse. Start here.
+- **Traces** (Jaeger) — what did *this one request* cause, across every service.
+- **Logs** (`DevLogs.cmd`) — exactly what happened, one event at a time.
+
+A metric tells you orders got slower at 14:20. A trace tells you why that one
+was slow.
 
 ## The scripts
 
@@ -36,6 +51,14 @@ Run these from anywhere; each one `pushd`s to the repo root first.
 Redis volumes. Pass `-y` to skip the prompt in a script.
 
 ## Non-negotiable rules
+
+-1. **A new service must expose `/metrics`, and there are two ways to get it.**
+   Services that call `health::serve` (the consumers) get it automatically.
+   Services that build their own router — `gateway-service`, `echo-service` —
+   must `.merge(service_core::metrics_routes())` themselves. Forgetting is
+   silent: the service runs perfectly, passes every healthcheck, and simply
+   never appears in Prometheus. Check with
+   `curl http://localhost:9090/api/v1/targets?state=active` after adding one.
 
 0. **`.sql` files are pinned to LF in `.gitattributes`.** sqlx checksums each
    migration's bytes and refuses to run when a previously applied file has

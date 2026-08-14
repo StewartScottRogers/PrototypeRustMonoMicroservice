@@ -1,0 +1,39 @@
+# What Prometheus scrapes, and how often.
+#
+# 5s is far more frequent than production would use - 15-60s is normal there.
+# It is set low deliberately: a demo you have to wait a minute to see react is
+# not a demo.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # DNS discovery rather than a static host list, because compose can run more
+  # than one copy of a service. `docker compose up --scale worker-service=4`
+  # returns four A records for `worker-service`, and Prometheus scrapes all
+  # four. A static target would have found exactly one of them and silently
+  # under-reported everything.
+  - job_name: services
+    metrics_path: /metrics
+    dns_sd_configs:
+      - names:
+          - gateway-service
+          - outbox-relay
+          - worker-service
+          - notifier-service
+          - audit-service
+          - echo-service
+        type: A
+        port: 8080
+
+    relabel_configs:
+      # The discovered target is an IP, which is unreadable on a dashboard and
+      # changes whenever a container restarts. Keep the instance label, but add
+      # a stable `service` label taken from the DNS name that found it.
+      - source_labels: [__meta_dns_name]
+        target_label: service
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

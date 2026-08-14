@@ -64,6 +64,13 @@ opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
 tracing-opentelemetry = "0.33"
 
+# Metrics. `metrics` is the facade services call; the exporter turns whatever
+# was recorded into the text format Prometheus scrapes. Same split as `tracing`
+# and `tracing-subscriber`: instrument against the facade, choose the backend
+# once, in service-core.
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.18", default-features = false }
+
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
 

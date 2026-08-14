@@ -180,6 +180,10 @@ fn app(state: AppState, order_state: OrderState) -> Router {
         .merge(orders::routes(order_state))
         // Asynchronous: accepted here, processed elsewhere, later.
         .merge(health_routes(SERVICE))
+        // This service builds its own router rather than using health::serve,
+        // so /metrics has to be merged explicitly. Forgetting it is silent -
+        // the service runs perfectly and simply never appears in Prometheus.
+        .merge(service_core::metrics_routes())
 }
 
 /// The router used by the tests, which have no database.
@@ -202,6 +206,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     init_tracing(SERVICE);
+    service_core::init_metrics();
 
     let echo_url =
         std::env::var("ECHO_SERVICE_URL").unwrap_or_else(|_| DEFAULT_ECHO_URL.to_owned());

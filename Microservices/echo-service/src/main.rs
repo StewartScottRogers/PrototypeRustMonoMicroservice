@@ -66,6 +66,7 @@ fn app() -> Router {
         // how every service picks up `/healthz` and `/readyz` from the shared
         // `service-core` crate without repeating them.
         .merge(health_routes(SERVICE))
+        .merge(service_core::metrics_routes())
 }
 
 /// Program entry point.
@@ -95,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     init_tracing(SERVICE);
+    service_core::init_metrics();
 
     // `[0, 0, 0, 0]` is 0.0.0.0 — every network interface. Binding to 127.0.0.1
     // instead would make the service unreachable from outside its container.
