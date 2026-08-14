@@ -74,6 +74,16 @@ async fn consume(messaging: Messaging) -> Result<()> {
 
         async {
             match serde_json::from_slice::<Envelope<OrderCompleted>>(&message.payload) {
+                Ok(envelope) if !envelope.is_supported() => {
+                    // Subscribers have no dead-letter queue of their own: an
+                    // event they cannot read is a fact they miss, not work
+                    // left undone. Log it loudly and move on.
+                    tracing::error!(
+                        schema_version = envelope.schema_version,
+                        supported = messaging_core::envelope::SCHEMA_VERSION,
+                        "unsupported schema version, skipping this event"
+                    );
+                }
                 Ok(envelope) => {
                     let event = &envelope.data;
                     tracing::info!(

@@ -75,10 +75,49 @@ services:
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     depends_on:
+      # No NATS dependency: this service only writes the outbox. Publishing is
+      # outbox-relay's job.
       postgres: { condition: service_healthy }
-      nats: { condition: service_healthy }
       echo-service: { condition: service_healthy }
     healthcheck: *service-healthcheck
+
+  # Reads committed outbox rows and publishes them. Its own process rather than
+  # a background task in the gateway, so HTTP throughput and relay throughput
+  # scale for their own reasons. Safe to run more than one - FOR UPDATE SKIP
+  # LOCKED means each claims a different set of rows.
+  outbox-relay:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: outbox-relay
+    image: prototype-rust/outbox-relay:dev
+    environment:
+      <<: *service-environment
+      PORT: 8080
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_healthy }
+    healthcheck: *service-healthcheck
+
+  # One-shot tool, not a service. `profiles` keeps it out of DevStart.cmd;
+  # DevReplay.cmd runs it on demand with `docker compose run`.
+  #
+  # Automatic replay would be a trap: a message is dead-lettered precisely
+  # because it kept failing, so replaying it on a timer loops forever. Draining
+  # the queue is a decision a person makes after fixing something.
+  dlq-replay:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: dlq-replay
+    image: prototype-rust/dlq-replay:dev
+    environment:
+      <<: *service-environment
+    restart: "no"
 
   worker-service:
     <<: *service-defaults

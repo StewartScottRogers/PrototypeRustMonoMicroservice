@@ -497,6 +497,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dlq-replay"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-nats",
+ "futures",
+ "messaging-core",
+ "serde_json",
+ "service-core",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1414,6 +1428,21 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
+]
+
+[[package]]
+name = "outbox-relay"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "db-core",
+ "messaging-core",
+ "serde_json",
+ "service-core",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

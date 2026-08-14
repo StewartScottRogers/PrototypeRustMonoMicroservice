@@ -70,6 +70,13 @@ async fn consume(messaging: Messaging, pool: PgPool) -> Result<()> {
 
         async {
             match serde_json::from_slice::<Envelope<OrderCompleted>>(&message.payload) {
+                Ok(envelope) if !envelope.is_supported() => {
+                    tracing::error!(
+                        schema_version = envelope.schema_version,
+                        supported = messaging_core::envelope::SCHEMA_VERSION,
+                        "unsupported schema version, skipping this event"
+                    );
+                }
                 Ok(envelope) => {
                     if let Err(error) = record(&pool, &envelope).await {
                         tracing::error!(%error, "could not write the audit row");

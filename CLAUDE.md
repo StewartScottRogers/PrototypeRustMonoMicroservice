@@ -17,7 +17,9 @@ Services:
 
 - `Microservices/gateway-service` — front door. `POST /relay` calls `echo-service` synchronously; `POST /order` writes through a transactional outbox and relays to NATS.
 - `Microservices/worker-service` — JetStream queue consumer (2 replicas). Retry, dead-lettering, idempotency.
+- `Microservices/outbox-relay` — publishes committed outbox rows to NATS. Its own process so HTTP and relay throughput scale separately.
 - `Microservices/notifier-service`, `Microservices/audit-service` — two independent subscribers to the same event.
+- `Microservices/dlq-replay` — one-shot tool that puts dead letters back on the queue. Run with `DevReplay.cmd`, never automatically.
 - `Microservices/echo-service` — the original synchronous HTTP example. Copy it to start a simple service.
 
 - `compose.yaml` + `Dev*.cmd` — the local stack: 5 services, NATS, Jaeger, Postgres, Redis. `DevDemo.cmd` narrates the whole demonstration. See `.claude/skills/dev-environment/SKILL.md` and `.claude/skills/messaging-and-eventing/SKILL.md`.
@@ -44,6 +46,7 @@ docker run --rm -p 8080:8080 echo-service:local
 
 DevStart.cmd     # whole stack: 5 services + NATS + Jaeger + Postgres + Redis
 DevDemo.cmd      # run and narrate the whole demonstration
+DevReplay.cmd    # put dead letters back on the queue (--dry-run to look first)
 DevStatus.cmd    # what is running, and is it healthy
 DevLogs.cmd      # follow logs
 DevStop.cmd      # stop, keep everything

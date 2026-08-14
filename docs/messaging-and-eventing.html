@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Dispatch Office</title>
+<meta name="description" content="How this prototype distinguishes messaging from eventing, and the evidence from a live run.">
+<style>
+  /* ---------------------------------------------------------------------
+     Tokens. Bare :root is the complete light palette. The two blocks after
+     it redefine only tokens, so components never reference a raw colour.
+     --------------------------------------------------------------------- */
+  :root {
+    --paper:      #edf1f5;
+    --card:       #ffffff;
+    --card-2:     #f5f8fb;
+    --ink:        #16202b;
+    --ink-soft:   #59677a;
+    --ink-faint:  #8595a6;
+    --rule:       #c7d2dd;
+    --rule-soft:  #dde5ec;
+    --stamp:      #b3352c;
+    --stamp-wash: #f7e6e4;
+    --indigo:     #22548c;
+    --indigo-wash:#e4ecf6;
+    --shadow:     0 1px 0 rgba(22, 32, 43, .04), 0 8px 24px -18px rgba(22, 32, 43, .5);
+
+    --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
+    --sans: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    --step--1: clamp(.75rem, .72rem + .12vw, .8rem);
+    --step-0:  clamp(1rem, .96rem + .18vw, 1.075rem);
+    --step-1:  clamp(1.2rem, 1.12rem + .35vw, 1.4rem);
+    --step-2:  clamp(1.5rem, 1.34rem + .7vw, 2rem);
+    --step-3:  clamp(2rem, 1.66rem + 1.5vw, 3.1rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #0f151b;
+      --card:       #18212b;
+      --card-2:     #131b24;
+      --ink:        #e4eaf0;
+      --ink-soft:   #94a3b2;
+      --ink-faint:  #6d7d8e;
+      --rule:       #2b3947;
+      --rule-soft:  #222d39;
+      --stamp:      #e4736a;
+      --stamp-wash: #2e1f1e;
+      --indigo:     #74a9e6;
+      --indigo-wash:#16232f;
+      --shadow:     0 1px 0 rgba(0,0,0,.3), 0 10px 28px -20px #000;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #0f151b;
+    --card:       #18212b;
+    --card-2:     #131b24;
+    --ink:        #e4eaf0;
+    --ink-soft:   #94a3b2;
+    --ink-faint:  #6d7d8e;
+    --rule:       #2b3947;
+    --rule-soft:  #222d39;
+    --stamp:      #e4736a;
+    --stamp-wash: #2e1f1e;
+    --indigo:     #74a9e6;
+    --indigo-wash:#16232f;
+    --shadow:     0 1px 0 rgba(0,0,0,.3), 0 10px 28px -20px #000;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--step-0);
+    line-height: 1.65;
+    margin: 0;
+    padding: 0 1.25rem 6rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 60rem; margin: 0 auto; }
+  .col  { max-width: 40rem; }
+
+  /* ---------- masthead: a routing slip ---------- */
+  .slip {
+    margin: 3.5rem 0 4rem;
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--ink);
+    background: var(--card);
+    box-shadow: var(--shadow);
+  }
+  .slip-head {
+    display: flex; flex-wrap: wrap; gap: .75rem 1.5rem;
+    justify-content: space-between; align-items: baseline;
+    padding: .7rem 1.5rem;
+    border-bottom: 1px solid var(--rule-soft);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .slip-body { padding: 2rem 1.5rem 2.25rem; }
+  h1 {
+    font-family: var(--mono);
+    font-size: var(--step-3);
+    line-height: 1.02;
+    letter-spacing: -.02em;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: var(--step-1);
+    line-height: 1.45;
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 34rem;
+    text-wrap: pretty;
+  }
+  .stamp {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--stamp);
+    border: 1.5px solid var(--stamp);
+    background: var(--stamp-wash);
+    padding: .2rem .6rem;
+    transform: rotate(-1.5deg);
+  }
+
+  /* ---------- sections ---------- */
+  section { margin: 4.5rem 0 0; }
+  .eyebrow {
+    display: flex; align-items: center; gap: 1rem;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 1.25rem;
+  }
+  .eyebrow::after {
+    content: ""; flex: 1; height: 1px; background: var(--rule);
+  }
+  h2 {
+    font-family: var(--mono);
+    font-size: var(--step-2);
+    line-height: 1.12;
+    letter-spacing: -.015em;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--mono);
+    font-size: var(--step-0);
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    margin: 0 0 .5rem;
+  }
+  p { margin: 0 0 1.1rem; text-wrap: pretty; }
+  .lede { font-size: var(--step-1); line-height: 1.5; color: var(--ink-soft); }
+  strong { font-weight: 650; }
+  code {
+    font-family: var(--mono);
+    font-size: .89em;
+    background: var(--card-2);
+    border: 1px solid var(--rule-soft);
+    padding: .08em .35em;
+    white-space: nowrap;
+  }
+
+  /* ---------- the centrepiece ---------- */
+  .panels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    box-shadow: var(--shadow);
+    margin: 2rem 0;
+  }
+  .panel { background: var(--card); padding: 1.75rem 1.5rem 1.5rem; }
+  .panel--copy { background: var(--card-2); }
+  .panel-tag {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    margin: 0 0 .2rem;
+  }
+  .panel--split .panel-tag { color: var(--indigo); }
+  .panel--copy  .panel-tag { color: var(--stamp); }
+  .panel-claim { font-size: var(--step-1); line-height: 1.3; margin: 0 0 1.25rem; }
+  .panel-note { font-size: var(--step--1); color: var(--ink-soft); margin: 1rem 0 0; line-height: 1.55; }
+  .panel svg { width: 100%; height: auto; display: block; }
+
+  .svg-box  { fill: var(--card); stroke: var(--ink); stroke-width: 1.5; }
+  .svg-box2 { fill: var(--card-2); stroke: var(--ink-soft); stroke-width: 1.25; }
+  .svg-line { stroke: var(--ink-soft); stroke-width: 1.5; fill: none; }
+  .svg-live { stroke: var(--indigo); stroke-width: 2.5; fill: none; }
+  .svg-copy { stroke: var(--stamp); stroke-width: 2.5; fill: none; }
+  .svg-dead { stroke: var(--rule); stroke-width: 1.5; fill: none; stroke-dasharray: 4 4; }
+  .svg-t    { font-family: var(--mono); font-size: 11px; fill: var(--ink); }
+  .svg-t-s  { font-family: var(--mono); font-size: 9.5px; fill: var(--ink-faint); letter-spacing: .06em; }
+
+  /* ---------- flow diagram ---------- */
+  .flow {
+    border: 1px solid var(--rule);
+    background: var(--card);
+    padding: 1.5rem 1rem;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+    margin: 2rem 0;
+  }
+  .flow svg { display: block; min-width: 40rem; width: 100%; height: auto; }
+
+  /* ---------- evidence ---------- */
+  .docket {
+    border: 1px solid var(--rule);
+    background: var(--card);
+    box-shadow: var(--shadow);
+    margin: 1.5rem 0;
+    overflow: hidden;
+  }
+  .docket-head {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;
+    padding: .55rem 1rem;
+    background: var(--card-2);
+    border-bottom: 1px solid var(--rule-soft);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .docket-head b { color: var(--ink); font-weight: 650; }
+  .docket pre {
+    margin: 0;
+    padding: 1rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    line-height: 1.75;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .w1 { color: var(--indigo); font-weight: 650; }
+  .w2 { color: var(--stamp); font-weight: 650; }
+  .dim { color: var(--ink-faint); }
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x: auto; margin: 1.5rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: var(--step--1); min-width: 30rem; }
+  caption {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding-bottom: .6rem;
+  }
+  th, td { text-align: left; padding: .6rem .85rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  th {
+    font-family: var(--mono);
+    font-weight: 650;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--rule);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+
+  /* ---------- property list ---------- */
+  .props { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin: 2rem 0; }
+  .prop { background: var(--card); padding: 1.35rem 1.5rem; }
+  .prop p { margin: 0; color: var(--ink-soft); font-size: var(--step--1); line-height: 1.65; }
+  .prop p + p { margin-top: .6rem; }
+  .prop .kicker { color: var(--stamp); font-family: var(--mono); font-size: var(--step--1); letter-spacing: .1em; text-transform: uppercase; }
+
+  /* ---------- run block ---------- */
+  .run {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 1.5rem;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    line-height: 2;
+    overflow-x: auto;
+    box-shadow: var(--shadow);
+    margin: 1.5rem 0;
+  }
+  .run .cmt { color: var(--ink-faint); }
+  .run b { color: #fff; font-weight: 650; }
+  :root[data-theme="dark"] .run b,
+  :root:not([data-theme="light"]) .run b { color: var(--ink); }
+
+  ul.gaps { padding-left: 1.1rem; margin: 1rem 0; }
+  ul.gaps li { margin-bottom: .7rem; color: var(--ink-soft); }
+  ul.gaps li::marker { color: var(--stamp); }
+
+  footer {
+    margin-top: 5rem; padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex; flex-wrap: wrap; gap: .5rem 2rem; justify-content: space-between;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .slip, section { animation: rise .5s cubic-bezier(.2,.7,.3,1) both; }
+    section:nth-of-type(1) { animation-delay: .04s; }
+    section:nth-of-type(2) { animation-delay: .08s; }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="slip">
+    <div class="slip-head">
+      <span>Prototype &middot; Rust Mono&#8203;Microservice</span>
+      <span>Master &middot; ed1ad32</span>
+    </div>
+    <div class="slip-body">
+      <p class="stamp">Delivered &amp; verified</p>
+      <h1>The Dispatch Office</h1>
+      <p class="standfirst">
+        Messaging and eventing are not the same thing. This build makes the
+        difference visible on one broker, with one API, and one line of
+        configuration between them.
+      </p>
+    </div>
+  </header>
+
+  <section>
+    <p class="eyebrow">The distinction</p>
+    <div class="col">
+      <h2>One docket, or a carbon copy</h2>
+      <p class="lede">
+        A <strong>command</strong> is a docket handed to one clerk. Somebody has
+        to do the work, and it must not be done twice.
+      </p>
+      <p class="lede">
+        An <strong>event</strong> is a memo run off on carbon paper. Every desk
+        that cares gets its own copy, and the sender never learns who read it.
+      </p>
+      <p>
+        In JetStream both use the same streams and the same calls. The only
+        thing that differs is whether consumers share a durable name.
+      </p>
+    </div>
+
+    <div class="panels">
+      <div class="panel panel--split">
+        <p class="panel-tag">Messaging</p>
+        <p class="panel-claim">A second worker <strong>splits</strong> the load.</p>
+        <svg viewBox="0 0 320 150" role="img" aria-label="One command stream feeding two workers that share a single consumer; each message goes to only one worker.">
+          <rect class="svg-box" x="8" y="12" width="96" height="30"/>
+          <text class="svg-t" x="20" y="31">commands</text>
+          <rect class="svg-box2" x="122" y="12" width="86" height="30"/>
+          <text class="svg-t-s" x="130" y="31">order-worker</text>
+          <path class="svg-line" d="M104 27 H122"/>
+          <path class="svg-live" d="M208 27 H228 Q240 27 240 40 V62"/>
+          <path class="svg-dead" d="M208 27 H228 Q240 27 240 40 V104"/>
+          <rect class="svg-box" x="196" y="62" width="90" height="28"/>
+          <text class="svg-t" x="206" y="80">worker 1</text>
+          <rect class="svg-box" x="196" y="104" width="90" height="28"/>
+          <text class="svg-t" x="206" y="122">worker 2</text>
+          <text class="svg-t-s" x="8" y="60">ONE SHARED</text>
+          <text class="svg-t-s" x="8" y="74">CONSUMER NAME</text>
+          <text class="svg-t-s" x="8" y="104">ONE MESSAGE</text>
+          <text class="svg-t-s" x="8" y="118">GOES TO ONE</text>
+        </svg>
+        <p class="panel-note">
+          Both workers ask for <code>order-worker</code>. The server hands each
+          command to exactly one of them.
+        </p>
+      </div>
+
+      <div class="panel panel--copy">
+        <p class="panel-tag">Eventing</p>
+        <p class="panel-claim">A second subscriber <strong>adds a reaction</strong>.</p>
+        <svg viewBox="0 0 320 150" role="img" aria-label="One event stream feeding two subscribers with separate consumers; both receive every event.">
+          <rect class="svg-box" x="8" y="12" width="96" height="30"/>
+          <text class="svg-t" x="30" y="31">events</text>
+          <path class="svg-line" d="M104 27 H118"/>
+          <rect class="svg-box2" x="118" y="8" width="76" height="24"/>
+          <text class="svg-t-s" x="124" y="24">notifier</text>
+          <rect class="svg-box2" x="118" y="50" width="76" height="24"/>
+          <text class="svg-t-s" x="124" y="66">audit</text>
+          <path class="svg-line" d="M111 27 V20 H118"/>
+          <path class="svg-line" d="M111 27 V62 H118"/>
+          <path class="svg-copy" d="M194 20 H222 Q234 20 234 32 V62"/>
+          <path class="svg-copy" d="M194 62 H210 Q222 62 222 74 V104"/>
+          <rect class="svg-box" x="196" y="62" width="90" height="28"/>
+          <text class="svg-t" x="206" y="80">notify</text>
+          <rect class="svg-box" x="196" y="104" width="90" height="28"/>
+          <text class="svg-t" x="206" y="122">write row</text>
+          <text class="svg-t-s" x="8" y="104">TWO CONSUMER</text>
+          <text class="svg-t-s" x="8" y="118">NAMES, TWO COPIES</text>
+        </svg>
+        <p class="panel-note">
+          <code>order-notifier</code> and <code>order-audit</code> each keep
+          their own position. Both see every event.
+        </p>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <caption>What changes when you add a second process</caption>
+        <thead>
+          <tr><th>Pattern</th><th>Consumer name</th><th>Second process does</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Messaging</td><td><code>order-worker</code> — shared</td><td>Halves the queue</td></tr>
+          <tr><td>Eventing</td><td><code>order-notifier</code>, <code>order-audit</code></td><td>Adds a reaction</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="col">
+      If you cannot say which of the two a new subject is, it is a command.
+    </p>
+  </section>
+
+  <section>
+    <p class="eyebrow">The route</p>
+    <div class="col">
+      <h2>What a single order actually does</h2>
+      <p>
+        Nine containers. The order is committed to Postgres <em>with</em> its
+        outgoing message in one transaction, relayed to the broker, worked once,
+        and then announced to anyone listening.
+      </p>
+    </div>
+
+    <div class="flow">
+      <svg viewBox="0 0 780 250" role="img" aria-label="Flow: a POST to the gateway writes an order and an outbox row in one transaction; a relay publishes to the commands stream; one of two workers processes it and publishes an event; the notifier and audit services each consume a copy.">
+        <rect class="svg-box" x="6" y="18" width="104" height="34"/>
+        <text class="svg-t" x="22" y="40">POST /order</text>
+
+        <path class="svg-line" d="M110 35 H150"/>
+        <rect class="svg-box" x="150" y="8" width="112" height="54"/>
+        <text class="svg-t" x="162" y="30">gateway</text>
+        <text class="svg-t-s" x="162" y="46">+ outbox relay</text>
+
+        <path class="svg-line" d="M206 62 V96"/>
+        <rect class="svg-box2" x="150" y="96" width="112" height="40"/>
+        <text class="svg-t-s" x="160" y="113">postgres</text>
+        <text class="svg-t-s" x="160" y="127">orders + outbox</text>
+        <text class="svg-t-s" x="214" y="84">ONE TXN</text>
+
+        <path class="svg-live" d="M262 35 H320"/>
+        <text class="svg-t-s" x="266" y="26">RELAY</text>
+        <rect class="svg-box" x="320" y="16" width="118" height="38"/>
+        <text class="svg-t-s" x="330" y="33">ORDER_COMMANDS</text>
+        <text class="svg-t-s" x="330" y="47">shared consumer</text>
+
+        <path class="svg-live" d="M438 35 H470"/>
+        <rect class="svg-box" x="470" y="4" width="96" height="28"/>
+        <text class="svg-t" x="482" y="22">worker 1</text>
+        <rect class="svg-box" x="470" y="40" width="96" height="28"/>
+        <text class="svg-t" x="482" y="58">worker 2</text>
+        <path class="svg-dead" d="M456 35 V54 H470"/>
+        <path class="svg-live" d="M456 35 V18 H470"/>
+
+        <path class="svg-copy" d="M566 18 H600 Q614 18 614 32 V96"/>
+        <path class="svg-copy" d="M566 54 H600 Q614 54 614 68 V96"/>
+        <rect class="svg-box" x="548" y="96" width="132" height="36"/>
+        <text class="svg-t-s" x="558" y="112">ORDER_EVENTS</text>
+        <text class="svg-t-s" x="558" y="126">two consumers</text>
+
+        <path class="svg-copy" d="M614 132 V158 H520"/>
+        <path class="svg-copy" d="M614 132 V158 H700"/>
+        <rect class="svg-box" x="430" y="158" width="112" height="34"/>
+        <text class="svg-t" x="442" y="180">notifier</text>
+        <rect class="svg-box" x="640" y="158" width="112" height="34"/>
+        <text class="svg-t" x="652" y="180">audit</text>
+        <path class="svg-line" d="M696 192 V214 H262 V136"/>
+        <text class="svg-t-s" x="430" y="228">AUDIT ROW BACK TO POSTGRES</text>
+
+        <path class="svg-dead" d="M470 68 V120 H548"/>
+        <text class="svg-t-s" x="440" y="112">3 FAILS</text>
+        <text class="svg-t-s" x="440" y="126">&#8594; DLQ</text>
+      </svg>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Evidence</p>
+    <div class="col">
+      <h2>It runs. Here is the tape.</h2>
+      <p>Captured from <code>DevDemo.cmd</code> against the live stack, not written by hand.</p>
+    </div>
+
+    <div class="docket">
+      <div class="docket-head"><span>Exhibit A &middot; <b>Messaging</b></span><span>six orders, two workers</span></div>
+<pre>widget-1   <span class="w1">worker d2e087683ab7</span>
+widget-2   <span class="w2">worker 4318cdc6683f</span>
+widget-3   <span class="w1">worker d2e087683ab7</span>
+widget-4   <span class="w2">worker 4318cdc6683f</span>
+widget-5   <span class="w1">worker d2e087683ab7</span>
+widget-6   <span class="w2">worker 4318cdc6683f</span>
+<span class="dim">
+the queue split. nobody did the same order twice.</span></pre>
+    </div>
+
+    <div class="docket">
+      <div class="docket-head"><span>Exhibit B &middot; <b>Eventing</b></span><span>one event, two reactions</span></div>
+<pre>notifier-service   reacted to order.completed   <span class="dim">reaction="notification sent"</span>
+audit-service      reacted to order.completed   <span class="dim">reaction="audit row written"</span>
+<span class="dim">
+same event. the worker knows about neither of them.</span></pre>
+    </div>
+
+    <div class="docket">
+      <div class="docket-head"><span>Exhibit C &middot; <b>Idempotency</b></span><span>same order id, twice</span></div>
+<pre>order 11111111-2222-3333-4444-555555555555
+  <span class="w1">processed order</span>
+  <span class="dim">already processed, skipping (idempotency)</span>
+<span class="dim">
+at-least-once delivery means duplicates are normal.
+the consumer copes, not the broker.</span></pre>
+    </div>
+
+    <div class="docket">
+      <div class="docket-head"><span>Exhibit D &middot; <b>Retry &amp; dead-letter</b></span><span>a poison order</span></div>
+<pre>attempt 1   <span class="dim">failed, will retry</span>
+attempt 2   <span class="dim">failed, will retry</span>
+attempt 3   <span class="w2">giving up, sending to the dead-letter queue</span>
+<span class="dim">
+moved aside, not discarded. the queue kept flowing.</span></pre>
+    </div>
+
+    <div class="docket">
+      <div class="docket-head"><span>Exhibit E &middot; <b>One trace</b></span><span>four spans, three services</span></div>
+<pre>gateway-service    outbox.publish   <span class="dim">ROOT</span>
+  &#9492;&#9472; worker-service   message        <span class="dim">child of gateway-service</span>
+       &#9500;&#9472; notifier-service  message   <span class="dim">child of worker-service</span>
+       &#9492;&#9472; audit-service     message   <span class="dim">child of worker-service</span>
+<span class="dim">
+eventing hides who caused what. the traceparent header,
+carried through NATS, gives it back.</span></pre>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">The four things that are easy to get wrong</p>
+    <div class="col"><h2>Correctness, not just plumbing</h2></div>
+    <div class="props">
+      <div class="prop">
+        <h3>Transactional outbox</h3>
+        <p class="kicker">Never publish inside the operation that writes state</p>
+        <p>
+          The order row and the outgoing message commit together. Publishing
+          directly leaves a window where the order exists and the message is
+          gone, with nothing left to prove it was ever meant to be sent.
+        </p>
+        <p>The row is marked published only after the broker acknowledges it. Marking first would recreate the same hole.</p>
+      </div>
+      <div class="prop">
+        <h3>Idempotency</h3>
+        <p class="kicker">Dedupe on the business key</p>
+        <p>
+          On <code>order_id</code>, not the message id. Message ids only catch
+          broker redeliveries; the order id also catches a client submitting the
+          same order twice, which is the duplicate people actually hit.
+        </p>
+        <p>
+          The claim is released when processing fails. Claiming it up front and
+          never releasing turns a retry into a "duplicate" and loses the message
+          precisely because you tried to be safe.
+        </p>
+      </div>
+      <div class="prop">
+        <h3>Retry, then dead-letter</h3>
+        <p class="kicker">Fail without jamming the queue</p>
+        <p>
+          Three attempts with a delayed negative acknowledgement, then the
+          message moves to its own stream. A message that can never succeed
+          would otherwise be redelivered forever, with everything behind it
+          waiting.
+        </p>
+      </div>
+      <div class="prop">
+        <h3>Distributed tracing</h3>
+        <p class="kicker">Give back what decoupling takes away</p>
+        <p>
+          The W3C <code>traceparent</code> rides in NATS headers, so one trace
+          covers the HTTP request, the broker hop and every subscriber. Without
+          it each service produces its own disconnected trace and the one
+          question worth asking — what did this request cause? — has no answer.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Running it</p>
+    <div class="col">
+      <h2>Two commands</h2>
+      <p>
+        Nine containers, roughly fifteen seconds to healthy. The demo narrates
+        itself and ends with a Jaeger link.
+      </p>
+    </div>
+    <div class="run"><span class="cmt">&#8250; build, start, wait for every healthcheck</span>
+<b>DevStart.cmd</b>
+
+<span class="cmt">&#8250; run the whole demonstration and narrate it</span>
+<b>DevDemo.cmd</b>
+
+<span class="cmt">&#8250; put dead letters back on the queue, after fixing the cause</span>
+<b>DevReplay.cmd</b> <span class="cmt">--dry-run to look first</span>
+
+<span class="cmt">&#8250; and when you are done</span>
+<b>DevStop.cmd</b>    <span class="cmt">stop, keep everything</span>
+<b>DevDelete.cmd</b>  <span class="cmt">remove containers, keep the data</span>
+<b>DevRemove.cmd</b>  <span class="cmt">remove everything, volumes included</span></div>
+    <div class="tablewrap">
+      <table>
+        <caption>What CI checks on every pull request</caption>
+        <thead><tr><th>Gate</th><th>Covers</th></tr></thead>
+        <tbody>
+          <tr><td><code>CI OK</code></td><td>fmt, clippy, per-crate tests, coverage, cargo-deny, and a full compose-stack smoke test</td></tr>
+          <tr><td><code>Image OK</code></td><td>five images built, scanned for CVEs, pushed to GHCR</td></tr>
+          <tr><td><code>Security OK</code></td><td>workflow audit, secret scan, CodeQL when the repo is public</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Closed</p>
+    <div class="col">
+      <h2>The four gaps, since fixed</h2>
+    </div>
+    <div class="props">
+      <div class="prop">
+        <h3>The trace survives the outbox</h3>
+        <p class="kicker">Was: the chain broke where it became durable</p>
+        <p>
+          The trace context now travels <em>inside</em> the envelope, and the
+          envelope is already stored as JSON in the outbox row — so the context
+          is still there minutes later when the relay picks it up. One field,
+          no new column. A trace now starts at the HTTP request:
+        </p>
+        <p><code>gateway accept &rarr; outbox-relay &rarr; worker &rarr; subscribers</code></p>
+      </div>
+      <div class="prop">
+        <h3>The relay is its own process</h3>
+        <p class="kicker">Was: a background task inside the gateway</p>
+        <p>
+          Running a second gateway for HTTP throughput used to start a second
+          relay whether you wanted one or not. Separated, each scales for its
+          own reason — and more than one copy was always safe, because
+          <code>FOR UPDATE SKIP LOCKED</code> makes them claim different rows.
+        </p>
+      </div>
+      <div class="prop">
+        <h3>The dead-letter queue can be drained</h3>
+        <p class="kicker">Was: messages parked with no way back</p>
+        <p>
+          <code>DevReplay.cmd</code> moves dead letters back onto the queue,
+          with <code>--dry-run</code> to look first. Deliberately a one-shot
+          tool, not a service: a message is dead-lettered <em>because</em> it
+          kept failing, so replaying on a timer loops forever while looking like
+          progress. Replay is a decision a person makes after fixing something.
+        </p>
+      </div>
+      <div class="prop">
+        <h3>Messages carry a schema version</h3>
+        <p class="kicker">Was: a decode failure was the only signal</p>
+        <p>
+          A stream holds messages for as long as its retention says, so a
+          deploy puts two payload shapes in flight at once. Every envelope now
+          declares its version; a consumer meeting an unknown one dead-letters
+          it rather than guessing. Additive changes keep the version, anything
+          that could break a reader increments it.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Not done</p>
+    <div class="col">
+      <h2>The one that is blocked</h2>
+      <p>
+        <strong>The gates are not armed.</strong> Every check runs and reports,
+        but nothing stops a red pull request being merged.
+      </p>
+      <p>
+        This is not an oversight and not a permissions problem. GitHub refuses
+        branch protection on a private repository owned by a personal account on
+        the free plan, through both the rulesets API and the older one:
+      </p>
+      <p><code>Upgrade to GitHub Pro or make this repository public</code></p>
+      <p>
+        It is the third feature to hit that same wall, after build provenance
+        attestation and CodeQL scanning. All three are written and waiting.
+      </p>
+      <p>
+        The policy is version-controlled at
+        <code>.github/rulesets/master.json</code> and applied by
+        <code>.github/scripts/arm-gates.sh</code> — one command, the moment the
+        repository goes public or onto a paid plan.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    <span>10 crates &middot; 6 services &middot; 31 unit tests &middot; 8 smoke assertions</span>
+    <span>NATS &middot; JetStream &middot; Postgres &middot; Redis &middot; Jaeger</span>
+  </footer>
+
+</div>
+</body>
+</html>

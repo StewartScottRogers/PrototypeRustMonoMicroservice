@@ -139,6 +139,28 @@ async fn handle(
 
         let order = &envelope.data;
 
+        // A message written against a schema this build does not know must not
+        // be guessed at. Dropping it loses data; processing it risks acting on
+        // a misread payload. The dead-letter queue keeps it for a human.
+        if !envelope.is_supported() {
+            tracing::error!(
+                order_id = %order.order_id,
+                schema_version = envelope.schema_version,
+                supported = messaging_core::envelope::SCHEMA_VERSION,
+                "unsupported schema version, dead-lettering"
+            );
+
+            messaging
+                .publish(
+                    subjects::ORDER_DEAD_LETTER,
+                    &Envelope::new("order.unsupported-schema", order.clone()),
+                )
+                .await?;
+
+            message.ack().await.ok();
+            return Ok(());
+        }
+
         // Dedupe on the *order id*, not the message id: two separate publishes
         // of the same order are the duplicate worth catching, and each of those
         // carries its own message id.

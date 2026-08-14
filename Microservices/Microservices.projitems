@@ -36,5 +36,9 @@
     <None Include="$(MSBuildThisFileDirectory)notifier-service\src\main.rs" />
     <None Include="$(MSBuildThisFileDirectory)audit-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)audit-service\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)outbox-relay\Cargo.toml" />
+    <None Include="$(MSBuildThisFileDirectory)outbox-relay\src\main.rs" />
+    <None Include="$(MSBuildThisFileDirectory)dlq-replay\Cargo.toml" />
+    <None Include="$(MSBuildThisFileDirectory)dlq-replay\src\main.rs" />
   </ItemGroup>
 </Project>
