@@ -206,7 +206,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     init_tracing(SERVICE);
-    service_core::init_metrics();
+    service_core::init_metrics(SERVICE);
 
     let echo_url =
         std::env::var("ECHO_SERVICE_URL").unwrap_or_else(|_| DEFAULT_ECHO_URL.to_owned());

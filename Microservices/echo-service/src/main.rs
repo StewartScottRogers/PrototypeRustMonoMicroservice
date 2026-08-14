@@ -96,7 +96,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     init_tracing(SERVICE);
-    service_core::init_metrics();
+    service_core::init_metrics(SERVICE);
 
     // `[0, 0, 0, 0]` is 0.0.0.0 — every network interface. Binding to 127.0.0.1
     // instead would make the service unreachable from outside its container.

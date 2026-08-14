@@ -40,7 +40,7 @@ static HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
 ///
 /// Returns quietly if called twice rather than panicking: a duplicate call is a
 /// wiring mistake, not a reason to refuse to start.
-pub fn init_metrics() {
+pub fn init_metrics(service: &'static str) {
     if HANDLE.get().is_some() {
         return;
     }
@@ -55,6 +55,22 @@ pub fn init_metrics() {
             tracing::error!(%error, "could not install the metrics recorder");
         }
     }
+
+    // Every service asserts its own identity.
+    //
+    // # Why this is not redundant with the scrape config
+    //
+    // Prometheus labels a target from whatever DNS told it, and never checks.
+    // Docker recycles container IP addresses: delete a service, and the next
+    // container to start can be handed the address it used to hold. Prometheus
+    // then scrapes that address, gets a perfectly valid response from an
+    // entirely different service, and reports the dead one as healthy.
+    //
+    // That happened here, and it is the worst failure a monitoring system can
+    // have - confidently wrong. This metric lets a query confirm that the
+    // process answering actually is who the target claims, so identity comes
+    // from the service rather than from a stale DNS cache.
+    metrics::gauge!(SERVICE_INFO, "service" => service).set(1.0);
 }
 
 /// Renders the current metrics in Prometheus text format.
@@ -76,6 +92,12 @@ pub fn render() -> String {
 // the NATS subjects are: a typo produces a second, silently empty metric rather
 // than a compile error, and that is a genuinely miserable thing to debug.
 // ---------------------------------------------------------------------------
+
+/// Always 1, labelled with the name the process believes it has.
+///
+/// Queried instead of `up` when the question is "is *this service* alive",
+/// because `up` only means "something answered at the address DNS gave me".
+pub const SERVICE_INFO: &str = "service_info";
 
 /// Orders accepted by the gateway and written to the outbox.
 pub const ORDERS_ACCEPTED: &str = "orders_accepted_total";
@@ -108,13 +130,21 @@ mod tests {
 
     #[test]
     fn installing_twice_is_harmless() {
-        init_metrics();
-        init_metrics();
+        init_metrics("test-service");
+        init_metrics("test-service");
 
         // Recording against the facade must work regardless of whether the
         // recorder installed - that is what makes it safe to instrument code
         // that unit tests also exercise.
         metrics::counter!(ORDERS_PROCESSED).increment(1);
+    }
+
+    #[test]
+    fn service_info_is_not_a_counter() {
+        // It is a gauge asserting identity, so the _total suffix would be a
+        // lie and would also break the loop below.
+        assert!(!SERVICE_INFO.ends_with("_total"));
+        assert_eq!(SERVICE_INFO, "service_info");
     }
 
     #[test]

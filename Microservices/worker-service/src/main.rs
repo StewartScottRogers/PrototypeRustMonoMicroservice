@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
     }
 
     init_tracing(SERVICE);
-    service_core::init_metrics();
+    service_core::init_metrics(SERVICE);
 
     // Docker sets HOSTNAME to the container id, which differs per replica. That
     // is what makes "which worker handled this" visible in the demo.

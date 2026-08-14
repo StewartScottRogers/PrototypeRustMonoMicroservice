@@ -106,6 +106,26 @@ At that point gitleaks becomes belt-and-braces rather than the only cover.
 - **CodeQL never reports anything**: check the repo is public. On a private
   repo the job is skipped by design and reports as such in the run summary.
 
+## `up` does not mean what it looks like
+
+`up{service="X"} == 1` means **"something answered at the address DNS gave
+me"** — not "X is alive". Docker recycles container IP addresses: delete a
+service and the next container to start can be handed the address it used to
+hold. Prometheus keeps scraping it, gets a valid `/metrics` response from an
+entirely different process, and reports the dead service as healthy.
+
+That is not hypothetical; it happened here, and it is why every service now
+emits `service_info{service="…"}` naming itself. Anything asking "is this
+service alive" — dashboards, alert rules, the mimic panel — must count
+`service_info`, not `up`.
+
+Use a bounded window too, or a vanished target reads healthy for Prometheus'
+five-minute default lookback:
+
+```
+count(last_over_time(service_info{service="worker-service"}[30s]))
+```
+
 ## Known gaps
 
 1. `dependabot.yml` bumps versions but nothing enforces a review window; a

@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
     }
 
     init_tracing(SERVICE);
-    service_core::init_metrics();
+    service_core::init_metrics(SERVICE);
 
     let database_url = std::env::var("DATABASE_URL")
         .context("DATABASE_URL must be set - the outbox lives in Postgres")?;

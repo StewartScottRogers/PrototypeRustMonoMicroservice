@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
     }
 
     init_tracing(SERVICE);
-    service_core::init_metrics();
+    service_core::init_metrics(SERVICE);
 
     let nats_url = std::env::var("NATS_URL").unwrap_or_else(|_| "nats://nats:4222".to_owned());
     let messaging = Messaging::connect(&nats_url).await?;

@@ -16,6 +16,7 @@ Thirteen containers: six services, NATS, Postgres, Redis, Jaeger, Prometheus, Gr
 | What | Where |
 | --- | --- |
 | Gateway | http://localhost:8080 |
+| **Live mimic panel** | **http://localhost:8090** |
 | Grafana dashboard | http://localhost:3000 (no login) |
 | Jaeger traces | http://localhost:16686 |
 | Prometheus | http://localhost:9090 |
