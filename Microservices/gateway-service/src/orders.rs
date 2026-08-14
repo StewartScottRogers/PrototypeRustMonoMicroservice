@@ -1,4 +1,4 @@
-//! Accepting orders, and getting them onto the broker without losing any.
+//! Accepting orders without losing any.
 //!
 //! # The problem this module solves
 //!
@@ -26,9 +26,9 @@
 //! COMMIT
 //! ```
 //!
-//! A separate relay then reads unpublished rows and sends them. If it crashes
-//! after publishing but before marking the row, it publishes again on restart —
-//! at-least-once, which the consumers already handle by being idempotent.
+//! `outbox-relay` then publishes those rows. That used to be a background task
+//! in this service; it is a separate process now, so HTTP throughput and relay
+//! throughput scale for their own reasons.
 //!
 //! Losing a message is unrecoverable. Sending one twice is a solved problem.
 //! The outbox trades the first for the second.
@@ -37,17 +37,10 @@ use anyhow::{Context as _, Result};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::{Json, Router, routing::post};
-use messaging_core::{Envelope, Messaging, OrderCommand, subjects};
+use messaging_core::{Envelope, OrderCommand, subjects};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::time::Duration;
 use uuid::Uuid;
-
-/// How often the relay looks for unpublished rows.
-const RELAY_INTERVAL: Duration = Duration::from_millis(250);
-
-/// How many rows the relay sends per pass.
-const RELAY_BATCH: i64 = 32;
 
 /// What the handlers need beyond a single request.
 #[derive(Clone)]
@@ -128,6 +121,10 @@ async fn accept(pool: &PgPool, order_id: Uuid, request: &PlaceOrder) -> Result<(
         item: request.item.clone(),
         quantity: request.quantity,
     };
+
+    // Built inside this span on purpose: Envelope::new captures the active
+    // trace context into the envelope, which is then stored as JSON in the
+    // outbox row. That is how the trace survives until the relay picks it up.
     let envelope = Envelope::new("order.created", command);
     let payload = serde_json::to_value(&envelope).context("could not encode the command")?;
 
@@ -169,71 +166,4 @@ async fn accept(pool: &PgPool, order_id: Uuid, request: &PlaceOrder) -> Result<(
 
     tracing::info!(%order_id, item = %request.item, "order accepted and queued in the outbox");
     Ok(())
-}
-
-/// Publishes outbox rows to NATS, forever.
-///
-/// Runs as a background task inside the gateway. In a larger system this would
-/// be its own process, or change-data-capture reading the write-ahead log; the
-/// pattern is identical either way.
-pub async fn relay(pool: PgPool, messaging: Messaging) -> Result<()> {
-    tracing::info!("outbox relay started");
-
-    loop {
-        match publish_batch(&pool, &messaging).await {
-            Ok(0) => tokio::time::sleep(RELAY_INTERVAL).await,
-            // Rows were sent, so look again immediately - a burst should drain
-            // at full speed rather than one batch per tick.
-            Ok(sent) => tracing::debug!(sent, "relayed outbox rows"),
-            Err(error) => {
-                // Never exit the loop. The broker being briefly unavailable is
-                // ordinary, and the rows are safe in Postgres until it returns.
-                tracing::error!(%error, "outbox relay failed, retrying");
-                tokio::time::sleep(RELAY_INTERVAL).await;
-            }
-        }
-    }
-}
-
-/// One pass of the relay. Returns how many rows it published.
-async fn publish_batch(pool: &PgPool, messaging: &Messaging) -> Result<usize> {
-    // FOR UPDATE SKIP LOCKED is what makes this safe to run in more than one
-    // process: each locks a different set of rows instead of colliding.
-    let rows: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
-        "SELECT message_id, payload
-           FROM outbox
-          WHERE published_at IS NULL
-          ORDER BY created_at
-          LIMIT $1
-            FOR UPDATE SKIP LOCKED",
-    )
-    .bind(RELAY_BATCH)
-    .fetch_all(pool)
-    .await
-    .context("could not read the outbox")?;
-
-    for (message_id, payload) in &rows {
-        // One span per row, so each published message is its own trace rather
-        // than a whole batch sharing one.
-        let span = tracing::info_span!("outbox.publish", %message_id);
-        let _guard = span.enter();
-
-        let envelope: Envelope<OrderCommand> =
-            serde_json::from_value(payload.clone()).context("an outbox row would not decode")?;
-
-        messaging
-            .publish(subjects::ORDER_COMMAND_CREATED, &envelope)
-            .await?;
-
-        // Marked only after JetStream confirms it stored the message. Marking
-        // first would turn a broker failure into a lost message - the exact
-        // thing the outbox exists to prevent.
-        sqlx::query("UPDATE outbox SET published_at = now() WHERE message_id = $1")
-            .bind(message_id)
-            .execute(pool)
-            .await
-            .context("could not mark the outbox row published")?;
-    }
-
-    Ok(rows.len())
 }

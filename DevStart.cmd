@@ -52,6 +52,19 @@ if not errorlevel 1 (
     goto :fail
 )
 
+rem A container that crashes on startup restarts forever and never reports a
+rem health state at all, so the "starting" check above sees nothing wrong. Ask
+rem about status separately, or a crash loop is reported as a clean start.
+docker compose ps --format "{{.Status}}" | findstr /i "Restarting Exited" >nul
+if not errorlevel 1 (
+    echo.
+    echo [DevStart] At least one container is crash-looping:
+    docker compose ps
+    echo.
+    echo [DevStart] Look at the logs with: DevLogs.cmd
+    goto :fail
+)
+
 if not defined READY (
     echo.
     echo [DevStart] Timed out waiting for containers to become healthy:

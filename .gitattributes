@@ -6,6 +6,12 @@
 # Shell scripts run on Linux CI runners; a CRLF shebang is a "bad interpreter" error.
 *.sh text eol=lf
 
+# sqlx checksums each migration's bytes and refuses to run when a previously
+# applied file has changed. Letting `* text=auto` rewrite these to CRLF on a
+# Windows checkout changes those bytes, and every service then fails to start
+# with "migration 1 was previously applied but has been modified".
+*.sql text eol=lf
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

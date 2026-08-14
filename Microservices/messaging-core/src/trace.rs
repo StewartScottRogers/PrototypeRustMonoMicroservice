@@ -21,6 +21,7 @@
 
 use async_nats::HeaderMap;
 use opentelemetry::propagation::{Extractor, Injector};
+use std::collections::BTreeMap;
 use std::str::FromStr as _;
 use tracing_opentelemetry::OpenTelemetrySpanExt as _;
 
@@ -40,6 +41,70 @@ pub fn inject_current(headers: &mut HeaderMap) {
     opentelemetry::global::get_text_map_propagator(|propagator| {
         propagator.inject_context(&context, &mut NatsInjector(headers));
     });
+}
+
+/// Captures the current trace context as a plain map.
+///
+/// Headers only survive as long as the message is in flight. Storing the same
+/// fields in the envelope means the context also survives being written to a
+/// database and read back minutes later — which is exactly what the outbox
+/// does, and why a trace used to stop dead at the gateway.
+pub fn current_context_map() -> BTreeMap<String, String> {
+    let context = tracing::Span::current().context();
+    let mut carrier = MapCarrier(BTreeMap::new());
+
+    opentelemetry::global::get_text_map_propagator(|propagator| {
+        propagator.inject_context(&context, &mut carrier);
+    });
+
+    carrier.0
+}
+
+/// Copies a stored context into outgoing NATS headers.
+///
+/// Used by the relay: the span it is publishing under belongs to the relay, but
+/// the context that matters belongs to the request that created the row.
+pub fn inject_map(headers: &mut HeaderMap, stored: &BTreeMap<String, String>) {
+    let mut injector = NatsInjector(headers);
+    for (key, value) in stored {
+        injector.set(key, value.clone());
+    }
+}
+
+/// Builds a span parented to a context stored in an envelope.
+///
+/// The counterpart of [`current_context_map`]. Returns a span that is *not*
+/// entered — pass it to `.instrument(span)`.
+pub fn span_from_map(name: &'static str, stored: &BTreeMap<String, String>) -> tracing::Span {
+    let span = tracing::info_span!("relay", handler = name);
+
+    if !stored.is_empty() {
+        let parent = opentelemetry::global::get_text_map_propagator(|propagator| {
+            propagator.extract(&MapCarrier(stored.clone()))
+        });
+        let _ = span.set_parent(parent);
+    }
+
+    span
+}
+
+/// Adapter letting the propagator read from and write to a plain map.
+struct MapCarrier(BTreeMap<String, String>);
+
+impl Injector for MapCarrier {
+    fn set(&mut self, key: &str, value: String) {
+        self.0.insert(key.to_owned(), value);
+    }
+}
+
+impl Extractor for MapCarrier {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).map(String::as_str)
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(String::as_str).collect()
+    }
 }
 
 /// Builds a span for a received message, parented to whatever produced it.

@@ -24,5 +24,7 @@
     <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\affected-crates.sh" Link="scripts\affected-crates.sh" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\binary-crates.sh" Link="scripts\binary-crates.sh" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\smoke-test.sh" Link="scripts\smoke-test.sh" />
+    <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\arm-gates.sh" Link="scripts\arm-gates.sh" />
+    <None Include="$(MSBuildThisFileDirectory)..\.github\rulesets\master.json" Link="rulesets\master.json" />
   </ItemGroup>
 </Project>

@@ -11,6 +11,7 @@
   <Project Path="Cargo/Cargo.shproj" Id="588a4070-b600-4443-a9b6-4a68094b0df8" />
   <Project Path="data/data.shproj" Id="643f1492-a899-443a-9489-b81691631fa6" />
   <Project Path="DevEnvironment/DevEnvironment.shproj" Id="0d578c2b-d6e3-45c5-80d9-14a7e4b602a3" />
+  <Project Path="Documentation/Documentation.shproj" Id="a61ec11a-570b-47e4-9f1b-e4b2101c6108" />
   <Project Path="GitHub/GitHub.shproj" Id="a6b0514d-35db-4169-9a5e-da72765eb93b" />
   <Project Path="Microservices/Microservices.shproj" Id="4f9db47a-6247-472e-946d-11adaef212fe" />
 </Solution>
