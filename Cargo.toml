@@ -32,7 +32,7 @@ futures = "0.3"
 # network is plain HTTP, and the default TLS stack is a large dependency to
 # compile for nothing.
 redis = { version = "1", default-features = false, features = ["tokio-comp"] }
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # No TLS feature: the database is on the compose network, and pulling in a TLS
