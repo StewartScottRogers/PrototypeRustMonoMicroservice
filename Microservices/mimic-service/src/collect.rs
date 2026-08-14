@@ -23,7 +23,7 @@ const QUEUE_WARN_DEPTH: u64 = 100;
 
 /// How recently a target must have been scraped to count as present.
 ///
-/// Comfortably longer than the 5-second scrape interval, so an ordinary missed
+/// Comfortably longer than the 2-second scrape interval, so an ordinary missed
 /// scrape does not flap the lamp, and far shorter than Prometheus' five-minute
 /// default lookback, which would let a dead service read healthy for minutes.
 const FRESHNESS_WINDOW: &str = "30s";
@@ -181,7 +181,22 @@ pub struct Collector {
 impl Collector {
     pub fn new(prometheus_url: String, nats_monitor_url: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            // Timeouts, not defaults.
+            //
+            // A default client waits forever. A Prometheus that accepts the
+            // connection and then answers nothing — a black hole rather than a
+            // refusal — would otherwise hang this call indefinitely, and the
+            // whole picture is built from a sequence of these. The panel would
+            // sit serenely showing a twenty-minute-old world, which is strictly
+            // worse than saying it cannot reach anything.
+            //
+            // Two seconds is generous against a scrape interval of two: a query
+            // that slow is a broken source, not a busy one.
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(2))
+                .connect_timeout(std::time::Duration::from_millis(500))
+                .build()
+                .unwrap_or_default(),
             prometheus_url,
             nats_monitor_url,
         }
@@ -464,7 +479,13 @@ impl Collector {
 
         if !sources_ok {
             alarms.push(Alarm {
-                text: "Prometheus unreachable — lamps show last known state".to_owned(),
+                // Says what the code does, not what would be nicer. There is no
+                // "last known state" anywhere: an unreachable Prometheus makes
+                // every service lamp grey, which is a claim of ignorance, not a
+                // stale reading. Describing it as the latter would send someone
+                // looking for a cached value that does not exist.
+                text: "Prometheus unreachable — service lamps show unknown, not a stale reading"
+                    .to_owned(),
                 severity: Status::Unknown,
             });
         }

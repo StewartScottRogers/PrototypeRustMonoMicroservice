@@ -55,6 +55,12 @@ const RECONCILE: Duration = Duration::from_secs(2);
 /// a growing backlog of bytes indefinitely.
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// The longest one reading of the sampled sources may take.
+///
+/// Shorter than the interval between readings on purpose: a read that has not
+/// finished before the next one is due is not going to be useful.
+const SNAPSHOT_BUDGET: Duration = Duration::from_millis(1800);
+
 /// One line on the drawing that just carried something.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Edge {
@@ -147,10 +153,23 @@ pub async fn aggregate(
     let mut last_message_at: Option<Instant> = None;
     let mut last_sample_at = Instant::now();
     let mut published = Arc::clone(&latest.borrow());
+    let mut counting_since_connected = false;
 
     let mut coalesce = tokio::time::interval(COALESCE_WINDOW);
     let mut heartbeat = tokio::time::interval(HEARTBEAT);
     let mut reconcile = tokio::time::interval(RECONCILE);
+
+    // Skip missed ticks rather than firing them back to back.
+    //
+    // The default is to catch up: an interval that could not run for two
+    // seconds then fires every missed tick with no gap between them. For the
+    // heartbeat that means a burst of identical messages the moment a stall
+    // clears; for the reconcile it means several Prometheus reads at once,
+    // right after the thing that caused the stall. Neither is useful, and
+    // "delay" is what a person means by "every second".
+    coalesce.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    reconcile.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     // The first tick of an interval fires immediately, which would reconcile
     // before the priming read had aged at all.
@@ -190,6 +209,14 @@ pub async fn aggregate(
             }
 
             _ = heartbeat.tick() => {
+                // Start the warm-up clock when the tap connects, not when the
+                // first message lands. An idle stack would otherwise never warm
+                // up, and its first message would arrive into a cold window.
+                if !counting_since_connected && health.all_connected() {
+                    readings.begin(Instant::now());
+                    counting_since_connected = true;
+                }
+
                 seq += 1;
                 send(&hub, &Push::Tick {
                     seq,
@@ -203,13 +230,51 @@ pub async fn aggregate(
             }
 
             _ = reconcile.tick() => {
-                let sampled = collector.snapshot().await;
-                last_sample_at = Instant::now();
+                // Bounded, because everything else in this loop waits on it.
+                //
+                // The collector's own client has a timeout, but one snapshot is
+                // a sequence of queries and a pathological source could still
+                // hold this arm far longer than a tick. While it is held the
+                // heartbeat does not go out, pulses do not go out, and reports
+                // pile up in the channel until it drops them — a Prometheus
+                // problem would present as a dead panel.
+                let sampled = match tokio::time::timeout(
+                    SNAPSHOT_BUDGET,
+                    collector.snapshot(),
+                ).await {
+                    Ok(snapshot) => {
+                        // Only a reading that actually reached Prometheus
+                        // counts as fresh. A snapshot that came back promptly
+                        // saying "I could not reach anything" is a *fast*
+                        // failure, not a recent measurement, and treating it as
+                        // one would let the age read "live" forever while
+                        // Prometheus was down.
+                        if snapshot.sources_ok {
+                            last_sample_at = Instant::now();
+                        }
+                        snapshot
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            "reading the sampled sources took longer than the budget; \
+                             keeping the previous picture"
+                        );
+                        // Deliberately not updating last_sample_at, so the age
+                        // on the next heartbeat climbs and the panel says the
+                        // lamps are old. That is the honest report.
+                        continue;
+                    }
+                };
 
-                let live_ok = health.all_connected();
+                let now = Instant::now();
+                // Live readings only win once their window has actually been
+                // open for a full window. Before that they under-read, and an
+                // under-reading live value replacing a correct sampled one is a
+                // confident lie told on every restart.
+                let live_ok = health.all_connected() && readings.warmed_up(now);
                 let merged = live::merge(
                     sampled,
-                    readings.gauges(Instant::now()),
+                    readings.gauges(now),
                     live_ok,
                 );
 
@@ -279,7 +344,15 @@ fn send(hub: &broadcast::Sender<Arc<str>>, push: &Push) {
 /// the socket, and the browser sees a request that hangs instead of an error —
 /// a genuinely confusing half hour if it happens.
 pub async fn live_socket(upgrade: WebSocketUpgrade, State(live): State<Live>) -> Response {
-    upgrade.on_upgrade(move |socket| serve(socket, live))
+    upgrade
+        // The browser never sends anything on this socket, so the generous
+        // defaults — tens of megabytes — are pure exposure. A kilobyte is more
+        // than a client that says nothing could ever legitimately need, and it
+        // turns "send a huge frame at the panel" from a memory question into an
+        // immediate disconnection.
+        .max_message_size(1024)
+        .max_frame_size(1024)
+        .on_upgrade(move |socket| serve(socket, live))
 }
 
 /// Serves one browser until it goes away.

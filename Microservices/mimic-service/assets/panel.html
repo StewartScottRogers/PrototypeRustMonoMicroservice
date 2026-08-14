@@ -446,9 +446,13 @@
   }
 
   function paintAlarms(alarms) {
-    const worst = alarms.reduce((carried, alarm) =>
-      alarm.severity === "down" ? "down"
-        : (carried === "down" ? carried : (alarm.severity === "degraded" ? "degraded" : carried)), "healthy");
+    // Ranked, so an "unknown" alarm cannot fall through to the healthy colour.
+    // A banner that says something is wrong while painting itself green is the
+    // worst of both: it is noticed, and then dismissed.
+    const RANK = { healthy: 0, unknown: 1, degraded: 2, down: 3 };
+    const worst = alarms.reduce(
+      (carried, alarm) => (RANK[alarm.severity] > RANK[carried] ? alarm.severity : carried),
+      "healthy");
 
     const box = byId("alarm-box"), lamp = byId("alarm-led"),
           title = byId("alarm-title"), text = byId("alarm-text"), count = byId("alarm-count");
@@ -638,25 +642,52 @@
   // all. The socket's own error handling therefore cannot be the only guard.
   // Never blank the panel: an empty screen is indistinguishable from a healthy
   // system with nothing happening.
+  // Silence is the failure mode a socket cannot report: a half-open connection
+  // fires no event at all. The watchdog both says so and *acts* - relabelling
+  // alone would leave the panel permanently frozen with an honest label, which
+  // is only half a fix.
   function armWatchdog() {
     window.clearTimeout(watchdog);
-    watchdog = window.setTimeout(() => showConnection("NO FEED", true), WATCHDOG_MILLISECONDS);
+    watchdog = window.setTimeout(() => {
+      goStale();
+      // Tear the silent socket down so onclose runs the normal reconnect.
+      // Never blank the picture: the last good one stays on screen.
+      if (socket) socket.close();
+    }, WATCHDOG_MILLISECONDS);
+  }
+
+  // When the feed stops, every claim it was carrying stops being true. Leaving
+  // the ages reading "live" from the last tick received would keep asserting
+  // freshness that nothing is refreshing.
+  function goStale() {
+    showConnection("NO FEED", true);
+    for (const id of ["age-lamps", "age-flow"]) {
+      const element = byId(id);
+      element.textContent = "unknown";
+      element.style.color = COLOURS.degraded;
+    }
   }
 
   function connect() {
     if (sampling) return;
+    // Without this guard, a wake-from-sleep can run connect() while a socket is
+    // still open, orphaning one whose handlers keep firing into the same page.
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
 
     const scheme = location.protocol === "https:" ? "wss://" : "ws://";
-    socket = new WebSocket(scheme + location.host + "/api/live");
+    const opening = new WebSocket(scheme + location.host + "/api/live");
+    socket = opening;
 
-    socket.onopen = () => {
+    opening.onopen = () => {
+      // Reset here rather than on the first message: the socket opened, so
+      // whatever failed before is not structural.
       failedOpens = 0;
       backoff = 500;
       showConnection("LIVE", false);
       armWatchdog();
     };
 
-    socket.onmessage = (event) => {
+    opening.onmessage = (event) => {
       armWatchdog();
       try {
         handle(JSON.parse(event.data));
@@ -665,13 +696,22 @@
       }
     };
 
-    socket.onclose = () => {
-      showConnection("NO FEED", true);
-      failedOpens += 1;
+    opening.onclose = () => {
+      // A stale handler from an orphaned socket must not drive reconnection.
+      if (socket !== opening) return;
 
-      // Three failures suggests something structural - a proxy stripping the
-      // upgrade header, most often - so fall back to asking rather than
-      // retrying a socket that will not open.
+      goStale();
+
+      // Only an open that never succeeded counts towards giving up. A socket
+      // that opened and later closed is an ordinary restart, and counting
+      // those would downgrade the panel to sampling forever after three
+      // service restarts - which it would then never recover from.
+      if (opening.readyState === WebSocket.CLOSED && !opening.hadOpened) {
+        failedOpens += 1;
+      }
+
+      // Three failures to *open* suggests something structural - a proxy
+      // stripping the upgrade header, most often - so fall back to asking.
       if (failedOpens >= 3) {
         startSampling();
         return;
@@ -684,10 +724,16 @@
       backoff = Math.min(backoff * 2, 10000);
     };
 
-    socket.onerror = () => socket.close();
+    opening.addEventListener("open", () => { opening.hadOpened = true; });
+    opening.onerror = () => opening.close();
   }
 
   // The reason /api/state is kept rather than deprecated.
+  //
+  // Sampling is a fallback, not a destination: every thirty seconds it tries
+  // the socket again. A proxy is reconfigured, a service is restarted, a
+  // network changes - and a panel that had quietly settled into one-second
+  // polling with no animation would never notice it could do better.
   function startSampling() {
     if (sampling) return;
     console.info("[mimic] falling back to sampling; the socket would not open");
@@ -703,16 +749,35 @@
         showConnection("NO FEED", true);
       }
     }, 1000);
+
+    window.setTimeout(stopSampling, 30000);
+  }
+
+  function stopSampling() {
+    if (!sampling) return;
+    window.clearInterval(sampling);
+    sampling = null;
+    failedOpens = 0;
+    backoff = 500;
+    connect();
   }
 
   // A sleeping laptop is the case where the socket is dead and nothing said so.
+  // A suspended machine's socket often reads as OPEN while being long dead, so
+  // re-arming the watchdog is what actually recovers it: three seconds of
+  // silence then tears it down and reconnects. Calling connect() alone would
+  // return immediately against that apparently-open socket.
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
     if (sampling) return;
+
+    backoff = 500;
+    failedOpens = 0;
+
     if (!socket || socket.readyState === WebSocket.CLOSED) {
-      backoff = 500;
-      failedOpens = 0;
       connect();
+    } else {
+      armWatchdog();
     }
   });
 

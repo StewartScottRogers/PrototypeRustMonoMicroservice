@@ -190,10 +190,31 @@ async fn main() -> Result<()> {
         "mimic panel listening"
     );
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context("the mimic server stopped")?;
+    // Serve, but stop if a background task dies.
+    //
+    // Every *expected* failure — a broker restart, a dropped connection — is
+    // already retried in place by the backoff loop in `tap`. A task that ends
+    // anyway therefore panicked, and the honest response is to exit so the
+    // container restarts clean. Without this the process would keep serving
+    // happily with a dead tap, and every browser would sit watching a flow
+    // plane that reported itself connected and delivered nothing.
+    //
+    // In-process backoff for expected failures, process exit for unexpected
+    // ones, and never a silent freeze.
+    tokio::select! {
+        served = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()) => {
+            served.context("the mimic server stopped")?;
+        }
+        (finished, index, _rest) = futures::future::select_all(&mut tasks) => {
+            tracing::error!(
+                task = index,
+                outcome = ?finished,
+                "a background task ended unexpectedly; exiting so the container restarts"
+            );
+            shutdown_tx.send_replace(true);
+            anyhow::bail!("a background task ended unexpectedly");
+        }
+    }
 
     // Tell the tap and the aggregator to stop, then give the tap a moment to
     // remove its consumers. Nothing on the server expires an abandoned one, so

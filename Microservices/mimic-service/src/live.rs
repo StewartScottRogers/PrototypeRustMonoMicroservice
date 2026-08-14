@@ -187,12 +187,23 @@ impl SlidingCount {
 pub struct LiveReadings {
     pub relayed: SlidingCount,
     pub processed: SlidingCount,
+    /// Counted so a dead letter can light its line, but never rendered as a
+    /// rate: the *depth* of the dead-letter stream is what a reader wants, and
+    /// that comes from the monitoring endpoint. See [`Self::gauges`], which
+    /// prunes this anyway.
     pub dead_letters: SlidingCount,
+    /// When the tap started counting.
+    ///
+    /// Needed because a rate over a fifteen-second window is meaningless until
+    /// fifteen seconds have passed — see [`Self::warmed_up`].
+    started: Option<Instant>,
 }
 
 impl LiveReadings {
     /// Records one observed message.
     pub fn record(&mut self, event: TapEvent, now: Instant) {
+        self.started.get_or_insert(now);
+
         match event {
             TapEvent::Command => self.relayed.push(now),
             TapEvent::Event => self.processed.push(now),
@@ -200,8 +211,37 @@ impl LiveReadings {
         }
     }
 
-    /// The three readings, formatted exactly as the collector formats its own.
+    /// Marks the moment the tap connected, so the warm-up clock starts then
+    /// rather than at the first message.
+    pub fn begin(&mut self, now: Instant) {
+        self.started.get_or_insert(now);
+    }
+
+    /// Whether the counting window has been open long enough to be meaningful.
+    ///
+    /// # Why this is not a detail
+    ///
+    /// A rate is "events divided by fifteen seconds". Four seconds after the
+    /// tap connects, the divisor is still fifteen but only four seconds of
+    /// events have had the chance to land, so the number reads roughly a
+    /// quarter of the truth. Letting that win the merge would replace a correct
+    /// sampled reading with a confidently wrong live one — and it would do it
+    /// on every restart, which is exactly when someone is watching.
+    pub fn warmed_up(&self, now: Instant) -> bool {
+        self.started
+            .is_some_and(|started| now.duration_since(started) >= RATE_WINDOW)
+    }
+
+    /// The readings this owns, formatted exactly as the collector formats its
+    /// own.
     pub fn gauges(&mut self, now: Instant) -> Vec<Gauge> {
+        // Pruned even though its rate is never rendered. `rate` is the only
+        // thing that discards old entries, so a counter that is pushed to but
+        // never read grows for as long as the process lives. On a stack that
+        // dead-letters steadily that is a slow leak with no symptom until it
+        // matters.
+        self.dead_letters.rate(now);
+
         vec![
             Gauge {
                 id: "g-relayed".to_owned(),
@@ -364,6 +404,53 @@ mod tests {
         // Two events against one command, so the processed rate is double.
         assert_eq!(relayed.value, "0.07");
         assert_eq!(processed.value, "0.13");
+    }
+
+    // ---- warm-up ----
+
+    #[test]
+    fn live_readings_do_not_count_as_ready_before_the_window_has_opened() {
+        // A rate divides by fifteen seconds. Four seconds in, only four seconds
+        // of events have had the chance to land, so the number reads roughly a
+        // quarter of the truth — and it would replace a correct sampled value.
+        let start = Instant::now();
+        let mut readings = LiveReadings::default();
+        readings.begin(start);
+
+        assert!(!readings.warmed_up(start));
+        assert!(!readings.warmed_up(start + Duration::from_secs(14)));
+        assert!(readings.warmed_up(start + RATE_WINDOW));
+    }
+
+    #[test]
+    fn readings_that_never_started_are_never_warmed_up() {
+        let readings = LiveReadings::default();
+        assert!(!readings.warmed_up(Instant::now()));
+    }
+
+    #[test]
+    fn the_dead_letter_counter_is_pruned_even_though_its_rate_is_never_shown() {
+        // `rate` is the only thing that discards old entries. A counter pushed
+        // to but never read grows for the life of the process — a slow leak
+        // with no symptom until it matters.
+        let start = Instant::now();
+        let mut readings = LiveReadings::default();
+
+        for _ in 0..1000 {
+            readings.record(TapEvent::DeadLetter, start);
+        }
+
+        // Long after the window has passed, asking for the gauges must have
+        // discarded them.
+        readings.gauges(start + RATE_WINDOW + Duration::from_secs(1));
+
+        assert_eq!(
+            readings
+                .dead_letters
+                .rate(start + RATE_WINDOW + Duration::from_secs(1)),
+            0.0,
+            "the dead-letter counter kept entries past the window"
+        );
     }
 
     // ---- the merge rule ----

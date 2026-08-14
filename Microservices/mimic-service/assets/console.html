@@ -254,23 +254,51 @@
   // ignores the traffic messages the panel animates from.
   let statusSocket = null;
   let statusBackoff = 500;
+  let statusWatchdog = null;
+
+  // Same reasoning as the panel: a half-open socket reports nothing at all, so
+  // silence needs its own timer, and that timer must act rather than only
+  // relabel. Otherwise a wedged feed leaves this strip showing green health
+  // indefinitely - the single most misleading thing this page could do.
+  function armStatusWatchdog() {
+    window.clearTimeout(statusWatchdog);
+    statusWatchdog = window.setTimeout(() => {
+      $("svc-line").textContent = "no feed";
+      $("dot-health").className = "dot unknown";
+      $("stamp-line").textContent = "—";
+      if (statusSocket) statusSocket.close();
+    }, 4000);
+  }
 
   function listenForStatus() {
     const scheme = location.protocol === "https:" ? "wss://" : "ws://";
-    statusSocket = new WebSocket(scheme + location.host + "/api/live");
+    const opening = new WebSocket(scheme + location.host + "/api/live");
+    statusSocket = opening;
 
-    statusSocket.onopen = () => { statusBackoff = 500; };
+    opening.onopen = () => { statusBackoff = 500; armStatusWatchdog(); };
 
-    statusSocket.onmessage = (event) => {
+    opening.onmessage = (event) => {
+      // Re-armed on *any* message, not only a frame. Frames arrive only when
+      // the picture changes, so a perfectly healthy idle stack sends nothing
+      // but heartbeats - and a watchdog listening for frames alone would
+      // declare that healthy stack dead every four seconds.
+      armStatusWatchdog();
       try {
         const message = JSON.parse(event.data);
         if (message.type === "frame") paintStatus(message.state);
+        // A heartbeat carries the freshness of the sampled sources, which is
+        // what this strip's timestamp is actually reporting.
+        if (message.type === "tick" && message.prometheus_age_milliseconds < 6000) {
+          $("stamp-line").textContent = new Date(message.at).toLocaleTimeString();
+        }
       } catch {
         // A message this strip cannot read is not a reason to blank it.
       }
     };
 
-    statusSocket.onclose = () => {
+    opening.onclose = () => {
+      if (statusSocket !== opening) return;
+
       $("svc-line").textContent = "no feed";
       $("dot-health").className = "dot unknown";
       $("stamp-line").textContent = "—";
@@ -279,7 +307,7 @@
       statusBackoff = Math.min(statusBackoff * 2, 10000);
     };
 
-    statusSocket.onerror = () => statusSocket.close();
+    opening.onerror = () => opening.close();
   }
 
   // One read before the socket opens, so the strip is never blank on arrival.

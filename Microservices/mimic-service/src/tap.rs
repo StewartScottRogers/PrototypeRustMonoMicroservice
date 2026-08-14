@@ -250,11 +250,27 @@ async fn follow(
     let mut dropped_full: u64 = 0;
     let mut last_complaint = std::time::Instant::now();
 
+    // Distinguishes "we were told to stop" from "the stream ended". Both leave
+    // the loop, and treating them the same would be a real fault: a broker
+    // restart ends the stream, and reporting that as a clean stop would retire
+    // this consumer permanently and silently. The panel would keep saying the
+    // flow plane was connected while receiving nothing ever again.
+    let mut asked_to_stop = false;
+
     loop {
         tokio::select! {
-            _ = shutdown.changed() => break,
+            _ = shutdown.changed() => {
+                asked_to_stop = true;
+                break;
+            }
             next = messages.next() => {
-                let Some(message) = next else { break };
+                let Some(message) = next else {
+                    tracing::warn!(
+                        consumer = watched.durable_name,
+                        "the message stream ended; reconnecting"
+                    );
+                    break;
+                };
                 let message = message?;
 
                 // Decoded as a generic value on purpose. The tap needs only the
@@ -302,6 +318,13 @@ async fn follow(
     }
 
     health.set(index, false);
+
+    if !asked_to_stop {
+        // The stream ended by itself. Say so as an error, which sends the
+        // supervisor into its backoff and reconnects, rather than returning
+        // Ok and retiring this consumer for the life of the process.
+        anyhow::bail!("the message stream for {} ended", watched.durable_name);
+    }
 
     // Nothing expires an abandoned consumer on the server, so removing it on
     // the way out is the only cleanup there is.
