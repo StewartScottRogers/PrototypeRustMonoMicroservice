@@ -1,12 +1,4 @@
 {
-  "_comment": [
-    "Branch protection for master, kept in version control because GitHub will",
-    "not accept it yet: rulesets and classic branch protection both require",
-    "GitHub Pro or a public repository, and this one is private on a free plan.",
-    "",
-    "Apply it with .github/scripts/arm-gates.sh once either of those changes.",
-    "Until then every check still runs and reports - nothing enforces them."
-  ],
   "name": "master",
   "target": "branch",
   "enforcement": "active",

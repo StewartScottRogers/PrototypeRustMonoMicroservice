@@ -21,9 +21,14 @@ policy="$here/../rulesets/master.json"
 
 echo "Applying $policy to $repo"
 
-# The _comment key exists for humans reading the file; the API rejects unknown
-# top-level fields, so strip it on the way through.
-if ! jq 'del(._comment)' "$policy" | gh api --method POST "repos/$repo/rulesets" --input - >/dev/null; then
+# The policy file is posted as-is. It deliberately carries no comment field:
+# JSON has no comments, the API rejects unknown top-level keys, and stripping
+# one would mean depending on jq - which is not installed everywhere this needs
+# to run. The explanation lives in this script instead.
+#
+# A file path rather than `-`: `gh api --input -` does not reliably read piped
+# stdin under Git Bash on Windows, and fails with "data cannot be null".
+if ! gh api --method POST "repos/$repo/rulesets" --input "$policy" >/dev/null; then
     cat >&2 <<'MESSAGE'
 
 Could not create the ruleset.
