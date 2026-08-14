@@ -1,8 +1,9 @@
 //! Emptying the dead-letter queue.
 //!
 //! A message that failed every delivery attempt is parked in the `ORDER_DLQ`
-//! stream rather than discarded. That is the right call — the alternative loses
-//! data — but a parked message helps nobody until something moves it back.
+//! stream rather than discarded. That is the right call — the alternative
+//! loses data — but a parked message helps nobody until something moves it
+//! back.
 //!
 //! This is that something. Fix whatever caused the failure, then run:
 //!
@@ -14,19 +15,19 @@
 //! # Why a one-shot tool and not a service
 //!
 //! Automatic replay is a trap. A message is in the dead-letter queue precisely
-//! because processing it failed repeatedly; replaying it on a timer produces an
-//! infinite loop that looks like progress. Draining the queue is a decision a
-//! person makes after fixing something, so it is a command a person runs.
+//! because processing it failed repeatedly; replaying it on a timer produces
+//! an infinite loop that looks like progress. Draining the queue is a decision
+//! a person makes after fixing something, so it is a command a person runs.
 //!
-//! The worker is idempotent, so replaying a message that did in fact succeed is
-//! harmless.
+//! The worker is idempotent, so replaying a message that did in fact succeed
+//! is harmless.
 
 /// Contract tests: the shapes this service emits and accepts, checked against
 /// the shared messaging-core types with no broker and no sibling running.
 ///
 /// They live in src/ rather than tests/ because this is a binary-only crate:
-/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
-/// See .claude/skills/microservice-agent-team/SKILL.md.
+/// Rust's tests/ directory can import a crate's lib target, and there isn't
+/// one. See .claude/skills/microservice-agent-team/SKILL.md.
 #[cfg(test)]
 mod contract_tests;
 
@@ -38,7 +39,8 @@ use std::time::Duration;
 
 const SERVICE: &str = "dlq-replay";
 
-/// How long to wait for another dead letter before deciding the queue is empty.
+/// How long to wait for another dead letter before deciding the queue is
+/// empty.
 ///
 /// The stream never ends on its own, so "empty" has to mean "nothing arrived
 /// for a while".
@@ -89,9 +91,9 @@ async fn drain(messaging: &Messaging, dry_run: bool) -> Result<usize> {
             subjects::STREAM_DEAD_LETTER,
             subjects::CONSUMER_DLQ_REPLAY,
             subjects::ORDER_DEAD_LETTER,
-            // Unlimited redelivery. Anything finite means a failed or abandoned
-            // drain permanently strands messages that are already, by
-            // definition, the ones nobody wants to lose.
+            // Unlimited redelivery. Anything finite means a failed or
+            // abandoned drain permanently strands messages that are already,
+            // by definition, the ones nobody wants to lose.
             -1,
         )
         .await?;
@@ -132,9 +134,9 @@ async fn drain(messaging: &Messaging, dry_run: bool) -> Result<usize> {
                     continue;
                 }
 
-                // A fresh envelope, so the replayed message gets its own id and
-                // timestamp. Reusing the original would make the redelivery
-                // indistinguishable from the failure in the logs.
+                // A fresh envelope, so the replayed message gets its own id
+                // and timestamp. Reusing the original would make the
+                // redelivery indistinguishable from the failure in the logs.
                 messaging
                     .publish(
                         subjects::ORDER_COMMAND_CREATED,
@@ -146,8 +148,9 @@ async fn drain(messaging: &Messaging, dry_run: bool) -> Result<usize> {
                 message.ack().await.ok();
             }
             Err(error) => {
-                // Leave it. A dead letter nobody can decode is exactly the kind
-                // of thing that should stay put until a human looks at it.
+                // Leave it. A dead letter nobody can decode is exactly the
+                // kind of thing that should stay put until a human looks at
+                // it.
                 tracing::error!(%error, "undecodable dead letter, leaving it in place");
             }
         }

@@ -3,11 +3,11 @@
 //! # Why a service rather than a static page
 //!
 //! A drawing with numbers typed into it is a diagram. A drawing whose numbers
-//! come from the running system is an instrument: when a light goes amber it is
-//! because something is actually wrong, and you can trust it enough to act.
+//! come from the running system is an instrument: when a light goes amber it
+//! is because something is actually wrong, and you can trust it enough to act.
 //!
-//! Everything here degrades rather than fails. If Prometheus is unreachable the
-//! panel shows every service as `unknown` (grey) instead of erroring — a
+//! Everything here degrades rather than fails. If Prometheus is unreachable
+//! the panel shows every service as `unknown` (grey) instead of erroring — a
 //! monitoring tool that goes down loudly when its data source blinks is worse
 //! than useless, because people learn to ignore it.
 
@@ -44,8 +44,8 @@ pub enum Status {
 /// One equipment block on the panel.
 #[derive(Debug, Clone, Serialize)]
 pub struct Node {
-    /// Matches an element id in the SVG, which is how the browser knows what to
-    /// repaint. A typo here shows up as a lamp that never changes.
+    /// Matches an element id in the drawing, which is how the browser knows what
+    /// to repaint. A typo here shows up as a lamp that never changes.
     pub id: String,
     pub status: Status,
     /// Short line under the name — replica count, or why it is amber.
@@ -80,15 +80,16 @@ pub struct Snapshot {
     pub sources_ok: bool,
 }
 
-/// Percent-encodes a string for use in a URL query value.
+/// Percent-encodes a string for use in a web address query value.
 ///
 /// Written by hand rather than pulling in a crate: reqwest's `.query()` helper
 /// needs features this workspace switched off to keep the container build
 /// small, and PromQL is full of characters — `{}`, `()`, `"`, spaces — that
-/// must not travel raw in a URL.
+/// must not travel raw in a web address.
 ///
-/// Only the RFC 3986 *unreserved* set passes through untouched. Everything
-/// else becomes `%XX`, which is always safe if occasionally verbose.
+/// Only the Request for Comments 3986 *unreserved* set passes through
+/// untouched. Everything else becomes `%XX`, which is always safe if
+/// occasionally verbose.
 fn percent_encode(input: &str) -> String {
     let mut encoded = String::with_capacity(input.len() * 2);
 
@@ -107,9 +108,10 @@ fn percent_encode(input: &str) -> String {
 
 /// Decides a service's lamp from what Prometheus could tell us.
 ///
-/// Pure, and separate from the HTTP call, because *this* is the part worth
-/// testing: the difference between "cannot tell" and "gone" is the whole
-/// difference between a panel people trust and one they learn to ignore.
+/// Pure, and separate from the Hypertext Transfer Protocol call, because
+/// *this* is the part worth testing: the difference between "cannot tell" and
+/// "gone" is the whole difference between a panel people trust and one they
+/// learn to ignore.
 fn classify_service(sources_ok: bool, instances_up: Option<u32>) -> (Status, String) {
     if !sources_ok {
         // Prometheus itself is unreachable, so nothing can be said about
@@ -118,10 +120,11 @@ fn classify_service(sources_ok: bool, instances_up: Option<u32>) -> (Status, Str
     }
 
     match instances_up {
-        // Prometheus is answering and has no recent series at all for a service
-        // this panel expects. That is not uncertainty - the target has vanished
-        // from discovery, which is what happens when the container stops.
-        // Reading it as "unknown" would hide an outage behind a grey lamp.
+        // Prometheus is answering and has no recent series at all for a
+        // service this panel expects. That is not uncertainty - the target has
+        // vanished from discovery, which is what happens when the container
+        // stops. Reading it as "unknown" would hide an outage behind a grey
+        // lamp.
         None => (Status::Down, "absent".to_owned()),
         Some(0) => (Status::Down, "not responding".to_owned()),
         Some(count) => {
@@ -206,13 +209,13 @@ impl Collector {
 
     /// How many instances of a service Prometheus has scraped *recently*.
     ///
-    /// `up` is Prometheus' own per-target metric, so this reflects reachability
-    /// rather than anything the service reports about itself.
+    /// `up` is Prometheus' own per-target metric, so this reflects
+    /// reachability rather than anything the service reports about itself.
     ///
     /// # Why `last_over_time` and not a bare `up`
     ///
-    /// A plain instant query on `up` looks back five minutes by default. When a
-    /// container disappears entirely its target leaves service discovery, no
+    /// A plain instant query on `up` looks back five minutes by default. When
+    /// a container disappears entirely its target leaves service discovery, no
     /// new samples are written, and that query keeps cheerfully returning the
     /// last value it saw — so a service that died two minutes ago still reads
     /// as healthy. On a monitoring panel that is the worst possible failure:
@@ -223,13 +226,13 @@ impl Collector {
     /// as absent rather than fine.
     /// # Why `service_info` and not `up`
     ///
-    /// `up` means "something answered at the address DNS gave me" — it says
-    /// nothing about *what* answered. Docker recycles container IP addresses,
-    /// so a deleted service's address can be reassigned to a new container;
-    /// Prometheus keeps scraping it, gets a valid response from a completely
-    /// different service, and reports the dead one as up. Observed here: the
-    /// worker's old address was handed to this very service, and the panel
-    /// showed a service with zero running containers as healthy.
+    /// `up` means "something answered at the address name resolution gave me"
+    /// — it says nothing about *what* answered. Docker recycles container IP
+    /// addresses, so a deleted service's address can be reassigned to a new
+    /// container; Prometheus keeps scraping it, gets a valid response from a
+    /// completely different service, and reports the dead one as up. Observed
+    /// here: the worker's old address was handed to this very service, and the
+    /// panel showed a service with zero running containers as healthy.
     ///
     /// `service_info` is emitted by each process with its own name, so this
     /// counts processes that claim to be the service rather than addresses
@@ -555,9 +558,9 @@ mod tests {
 
     #[test]
     fn a_service_missing_from_a_healthy_prometheus_is_down_not_unknown() {
-        // The bug this panel was built on: a vanished target produces no series
-        // at all, and reading that as "unknown" hid a dead service behind a
-        // grey lamp for minutes.
+        // The bug this panel was built on: a vanished target produces no
+        // series at all, and reading that as "unknown" hid a dead service
+        // behind a grey lamp for minutes.
         let (status, detail) = classify_service(true, None);
         assert_eq!(status, Status::Down);
         assert_eq!(detail, "absent");
@@ -621,7 +624,7 @@ mod tests {
     #[test]
     fn promql_survives_url_encoding() {
         // The characters that actually appear in these queries, and would
-        // otherwise break the URL or silently truncate the expression.
+        // otherwise break the web address or silently truncate the expression.
         assert_eq!(percent_encode("up"), "up");
         assert_eq!(
             percent_encode("count(up{service=\"worker\"} == 1)"),

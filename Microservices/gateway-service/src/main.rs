@@ -7,22 +7,23 @@
 //!
 //! ```text
 //!   you ──POST /relay──▶ gateway-service ──POST /echo──▶ echo-service
-//!                                        ◀──── JSON ────
+//!                                        ◀──── JavaScript Object Notation ────
 //! ```
 //!
 //! # Reading this file as a Rust newcomer
 //!
-//! The new idea here compared to `echo-service` is **shared state**: the HTTP
-//! client and the upstream URL are created once at startup and every request
-//! handler needs to reach them. Rust makes you be explicit about how something
-//! is shared, which is what [`AppState`] and axum's `State` extractor are for.
+//! The new idea here compared to `echo-service` is **shared state**: the
+//! Hypertext Transfer Protocol client and the upstream web address are created
+//! once at startup and every request handler needs to reach them. Rust makes
+//! you be explicit about how something is shared, which is what [`AppState`]
+//! and axum's `State` extractor are for.
 
 /// Contract tests: the shapes this service emits and accepts, checked against
 /// the shared messaging-core types with no broker and no sibling running.
 ///
 /// They live in src/ rather than tests/ because this is a binary-only crate:
-/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
-/// See .claude/skills/microservice-agent-team/SKILL.md.
+/// Rust's tests/ directory can import a crate's lib target, and there isn't
+/// one. See .claude/skills/microservice-agent-team/SKILL.md.
 #[cfg(test)]
 mod contract_tests;
 
@@ -48,8 +49,8 @@ const DEFAULT_ECHO_URL: &str = "http://echo-service:8080";
 /// `#[derive(Clone)]` matters: axum hands each request handler its own copy of
 /// the state, so the type must be cloneable. Both fields are cheap to clone —
 /// `reqwest::Client` is a handle to a shared connection pool, not the pool
-/// itself, so cloning it shares the pool rather than duplicating it. Creating a
-/// fresh `Client` per request instead would throw away connection reuse.
+/// itself, so cloning it shares the pool rather than duplicating it. Creating
+/// a fresh `Client` per request instead would throw away connection reuse.
 #[derive(Clone)]
 struct AppState {
     client: reqwest::Client,
@@ -103,7 +104,8 @@ struct ErrorResponse {
 ///   list; `Json` has to be last.
 /// - The return type is a `Result`. On `Ok` axum sends the success response; on
 ///   `Err` it sends the error one. The tuple `(StatusCode, Json<T>)` is axum's
-///   shorthand for "this status code with this JSON body".
+///   shorthand for "this status code, with this body as JavaScript Object
+///   Notation".
 async fn relay(
     State(state): State<AppState>,
     Json(request): Json<RelayRequest>,
@@ -127,7 +129,8 @@ async fn relay(
         .await
         // `.map_err(...)` transforms the error inside a `Result` while leaving
         // a success value untouched. Here it converts reqwest's error into the
-        // HTTP response this function promises to return.
+        // Hypertext Transfer Protocol response this function promises to
+        // return.
         .map_err(|error| {
             tracing::error!(%error, upstream = %url, "upstream request failed");
             bad_gateway("could not reach echo-service")
@@ -178,14 +181,14 @@ fn bad_gateway(message: &str) -> (StatusCode, Json<ErrorResponse>) {
 /// the state requirement is now satisfied, so it disappears from the type.
 /// Only then can it merge with `health_routes`, whose handlers need no state.
 ///
-/// Merging first and calling `.with_state` afterwards is a compile error, not a
-/// runtime surprise. The type system is tracking "has this router been given
+/// Merging first and calling `.with_state` afterwards is a compile error, not
+/// a runtime surprise. The type system is tracking "has this router been given
 /// everything it needs yet".
 fn app(state: AppState, order_state: OrderState) -> Router {
     let relay_routes = Router::new().route("/relay", post(relay)).with_state(state);
 
     relay_routes
-        // Synchronous HTTP call to another service.
+        // Synchronous Hypertext Transfer Protocol call to another service.
         .merge(orders::routes(order_state))
         // Asynchronous: accepted here, processed elsewhere, later.
         .merge(health_routes(SERVICE))
@@ -260,7 +263,8 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    /// Starts a fake echo-service on a random free port and returns its URL.
+    /// Starts a fake echo-service on a random free port and returns its web
+    /// address.
     ///
     /// Testing against a stub rather than the real crate keeps this a *unit*
     /// test: it fails only when the gateway is wrong.

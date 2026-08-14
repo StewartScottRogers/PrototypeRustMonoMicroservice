@@ -19,8 +19,8 @@
 /// the shared messaging-core types with no broker and no sibling running.
 ///
 /// They live in src/ rather than tests/ because this is a binary-only crate:
-/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
-/// See .claude/skills/microservice-agent-team/SKILL.md.
+/// Rust's tests/ directory can import a crate's lib target, and there isn't
+/// one. See .claude/skills/microservice-agent-team/SKILL.md.
 #[cfg(test)]
 mod contract_tests;
 
@@ -78,8 +78,8 @@ async fn consume(messaging: Messaging) -> Result<()> {
     while let Some(message) = messages.next().await {
         let message = message.context("could not read the next event")?;
 
-        // Continues the trace that began with the HTTP request, so this
-        // reaction shows up under the order that caused it.
+        // Continues the trace that began with the Hypertext Transfer Protocol
+        // request, so this reaction shows up under the order that caused it.
         let span = messaging_core::trace::span_for_message("notifier", message.headers.as_ref());
 
         async {

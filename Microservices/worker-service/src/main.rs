@@ -20,8 +20,8 @@
 /// the shared messaging-core types with no broker and no sibling running.
 ///
 /// They live in src/ rather than tests/ because this is a binary-only crate:
-/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
-/// See .claude/skills/microservice-agent-team/SKILL.md.
+/// Rust's tests/ directory can import a crate's lib target, and there isn't
+/// one. See .claude/skills/microservice-agent-team/SKILL.md.
 #[cfg(test)]
 mod contract_tests;
 
@@ -57,8 +57,8 @@ async fn main() -> Result<()> {
     init_tracing(SERVICE);
     service_core::init_metrics(SERVICE);
 
-    // Docker sets HOSTNAME to the container id, which differs per replica. That
-    // is what makes "which worker handled this" visible in the demo.
+    // Docker sets HOSTNAME to the container id, which differs per replica.
+    // That is what makes "which worker handled this" visible in the demo.
     let instance = std::env::var("HOSTNAME").unwrap_or_else(|_| "worker-unknown".to_owned());
 
     let nats_url = std::env::var("NATS_URL").unwrap_or_else(|_| "nats://nats:4222".to_owned());
@@ -98,7 +98,8 @@ async fn consume(
     let mut messages = messaging
         .durable_consumer(
             subjects::STREAM_COMMANDS,
-            // Shared name: this is what makes it messaging rather than eventing.
+            // Shared name: this is what makes it messaging rather than
+            // eventing.
             subjects::CONSUMER_WORKER,
             subjects::ORDER_COMMAND_CREATED,
             MAX_DELIVER,
@@ -133,7 +134,8 @@ async fn handle(
     message: async_nats::jetstream::Message,
 ) -> Result<()> {
     {
-        // How many times JetStream has tried to deliver this one, counting now.
+        // How many times JetStream has tried to deliver this one, counting
+        // now.
         let delivered = message.info().map(|info| info.delivered).unwrap_or(1);
 
         let envelope: Envelope<OrderCommand> = match serde_json::from_slice(&message.payload) {
@@ -172,8 +174,8 @@ async fn handle(
         }
 
         // Dedupe on the *order id*, not the message id: two separate publishes
-        // of the same order are the duplicate worth catching, and each of those
-        // carries its own message id.
+        // of the same order are the duplicate worth catching, and each of
+        // those carries its own message id.
         if !guard.first_time_seeing(order.order_id).await? {
             metrics::counter!(service_core::metrics::ORDERS_DUPLICATE).increment(1);
             tracing::info!(
@@ -227,8 +229,8 @@ async fn handle(
 
                     metrics::counter!(service_core::metrics::ORDERS_DEAD_LETTERED).increment(1);
 
-                    // Ack the original: it is safely stored in the DLQ now, and
-                    // leaving it unacked would block the queue.
+                    // Ack the original: it is safely stored in the dead-letter
+                    // queue now, and leaving it unacked would block the queue.
                     message.ack().await.ok();
                 } else {
                     tracing::warn!(

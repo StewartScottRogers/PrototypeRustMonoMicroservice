@@ -35,7 +35,7 @@
 
 name: prototype-rust-microservices
 
-# YAML anchors: defined once, merged into each service below with <<:. Keeps
+# Anchors: defined once, merged into each service below with <<:. Keeps
 # nine services from repeating the same six lines.
 x-service-defaults: &service-defaults
   restart: unless-stopped
@@ -82,7 +82,7 @@ services:
     healthcheck: *service-healthcheck
 
   # Reads committed outbox rows and publishes them. Its own process rather than
-  # a background task in the gateway, so HTTP throughput and relay throughput
+  # a background task in the gateway, so Hypertext Transfer Protocol throughput and relay throughput
   # scale for their own reasons. Safe to run more than one - FOR UPDATE SKIP
   # LOCKED means each claims a different set of rows.
   outbox-relay:
@@ -281,7 +281,7 @@ services:
   grafana:
     image: grafana/grafana:13.1.3
     environment:
-      # Anonymous admin access. Correct for a local demo, catastrophic anywhere
+      # Anonymous administrator access. Correct for a local demo, catastrophic anywhere
       # else - there is no login page at all with this set.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin

@@ -3,11 +3,12 @@
 //! # The problem
 //!
 //! A trace is a tree of spans tied together by a trace id. Within one process
-//! that is automatic. Across a network hop it is not: the receiving process has
-//! no idea the sender existed unless the sender says so, in the message.
+//! that is automatic. Across a network hop it is not: the receiving process
+//! has no idea the sender existed unless the sender says so, in the message.
 //!
-//! HTTP solves this with a `traceparent` header. NATS messages have headers
-//! too, so the same W3C standard works — it just has to be wired up by hand.
+//! Hypertext Transfer Protocol solves this with a `traceparent` header. NATS
+//! messages have headers too, so the same World Wide Web Consortium standard
+//! works — it just has to be wired up by hand.
 //!
 //! Without this module every service produces its own disconnected trace, and
 //! the one question worth asking of an event-driven system — "what did this
@@ -25,10 +26,12 @@ use std::collections::BTreeMap;
 use std::str::FromStr as _;
 use tracing_opentelemetry::OpenTelemetrySpanExt as _;
 
-/// The header carrying trace context, from the W3C Trace Context standard.
-/// Named here only for documentation — the propagator writes it itself.
+/// The header carrying trace context, from the World Wide Web Consortium Trace
+/// Context standard. Named here only for documentation — the propagator writes
+/// it itself.
 pub const TRACEPARENT: &str = "traceparent";
-/// Vendor-specific trace state, the other half of the W3C standard.
+/// Vendor-specific trace state, the other half of the World Wide Web
+/// Consortium standard.
 pub const TRACESTATE: &str = "tracestate";
 
 /// Writes the current span's trace context into `headers`.
@@ -62,8 +65,8 @@ pub fn current_context_map() -> BTreeMap<String, String> {
 
 /// Copies a stored context into outgoing NATS headers.
 ///
-/// Used by the relay: the span it is publishing under belongs to the relay, but
-/// the context that matters belongs to the request that created the row.
+/// Used by the relay: the span it is publishing under belongs to the relay,
+/// but the context that matters belongs to the request that created the row.
 pub fn inject_map(headers: &mut HeaderMap, stored: &BTreeMap<String, String>) {
     let mut injector = NatsInjector(headers);
     for (key, value) in stored {
@@ -155,9 +158,10 @@ impl Extractor for NatsExtractor<'_> {
 
     fn keys(&self) -> Vec<&str> {
         // async-nats keeps `HeaderName::as_str` private, so the real key list
-        // cannot be enumerated. That is fine here: the W3C propagator reads its
-        // fields by name through `get`, and never calls this. Naming the two
-        // fields it could ask for keeps the contract honest.
+        // cannot be enumerated. That is fine here: the World Wide Web
+        // Consortium propagator reads its fields by name through `get`, and
+        // never calls this. Naming the two fields it could ask for keeps the
+        // contract honest.
         vec![TRACEPARENT, TRACESTATE]
     }
 }

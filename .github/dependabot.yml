@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # One PR for the whole workspace: versions live in the root [workspace.dependencies].
+  # One pull request for the whole workspace: versions live in the root [workspace.dependencies].
   - package-ecosystem: cargo
     directory: "/"
     schedule:

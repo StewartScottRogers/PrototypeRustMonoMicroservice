@@ -1,4 +1,5 @@
-//! Reference microservice. Copy this crate as the starting point for a new one.
+//! Reference microservice. Copy this crate as the starting point for a new
+//! one.
 //!
 //! It exposes one endpoint, `POST /echo`, which returns the message it was
 //! given. `gateway-service` calls it, which is what makes the compose stack a
@@ -7,15 +8,15 @@
 //! # Reading this file as a Rust newcomer
 //!
 //! `main.rs` is the root of a *binary* crate: it produces an executable, and
-//! execution starts at `fn main`. Compare `service-core/src/lib.rs`, which is a
-//! library and has no `main`.
+//! execution starts at `fn main`. Compare `service-core/src/lib.rs`, which is
+//! a library and has no `main`.
 
 /// Contract tests: the shapes this service emits and accepts, checked against
 /// the shared messaging-core types with no broker and no sibling running.
 ///
 /// They live in src/ rather than tests/ because this is a binary-only crate:
-/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
-/// See .claude/skills/microservice-agent-team/SKILL.md.
+/// Rust's tests/ directory can import a crate's lib target, and there isn't
+/// one. See .claude/skills/microservice-agent-team/SKILL.md.
 #[cfg(test)]
 mod contract_tests;
 
@@ -31,9 +32,10 @@ const DEFAULT_PORT: u16 = 8080;
 
 /// The shape of the request body.
 ///
-/// `Deserialize` (from serde) is what lets axum turn incoming JSON into this
-/// struct. If a request body does not match — wrong field name, wrong type —
-/// axum rejects it with `422 Unprocessable Entity` before the handler runs.
+/// `Deserialize` (from serde) is what lets axum turn incoming JavaScript
+/// Object Notation into this struct. If a request body does not match — wrong
+/// field name, wrong type — axum rejects it with `422 Unprocessable Entity`
+/// before the handler runs.
 ///
 /// The struct is not `pub` because nothing outside this file needs it.
 #[derive(Debug, Deserialize)]
@@ -42,7 +44,8 @@ struct EchoRequest {
 }
 
 /// The shape of the response body. `Serialize` is the mirror image of
-/// `Deserialize`: struct out to JSON, rather than JSON in to struct.
+/// `Deserialize`: struct out to JavaScript Object Notation, rather than
+/// JavaScript Object Notation in to struct.
 #[derive(Debug, Serialize)]
 struct EchoResponse {
     echo: String,
@@ -51,10 +54,10 @@ struct EchoResponse {
 
 /// Handles `POST /echo`.
 ///
-/// `Json(request)` in the parameter list is both an *extractor* and a *pattern*.
-/// Axum sees the `Json` type and parses the body into `EchoRequest`; the
-/// surrounding `Json(...)` immediately destructures the wrapper so the body of
-/// the function can use `request` directly.
+/// `Json(request)` in the parameter list is both an *extractor* and a
+/// *pattern*. Axum sees the `Json` type and parses the body into
+/// `EchoRequest`; the surrounding `Json(...)` immediately destructures the
+/// wrapper so the body of the function can use `request` directly.
 async fn echo(Json(request): Json<EchoRequest>) -> Json<EchoResponse> {
     Json(EchoResponse {
         // `request.message` is *moved* out of `request` here rather than
@@ -82,8 +85,8 @@ fn app() -> Router {
 ///
 /// `#[tokio::main]` is an *attribute macro*. It rewrites this async function
 /// into a normal `fn main` that starts the Tokio async runtime and runs the
-/// body on it. Without it, `async fn main` would not compile — the language has
-/// no built-in runtime.
+/// body on it. Without it, `async fn main` would not compile — the language
+/// has no built-in runtime.
 ///
 /// The `-> anyhow::Result<()>` return type means "either success carrying
 /// nothing (`()`, the empty tuple), or an error". Returning an error from
@@ -99,16 +102,17 @@ async fn main() -> anyhow::Result<()> {
     // so `.nth(1)` is the first real argument. `.as_deref()` turns
     // `Option<String>` into `Option<&str>` so it can be compared to a literal.
     if std::env::args().nth(1).as_deref() == Some("healthcheck") {
-        // `if ... { A } else { B }` is an *expression* in Rust: it evaluates to
-        // a value, so it can be passed straight to `exit`.
+        // `if ... { A } else { B }` is an *expression* in Rust: it evaluates
+        // to a value, so it can be passed straight to `exit`.
         std::process::exit(if self_check(port) { 0 } else { 1 });
     }
 
     init_tracing(SERVICE);
     service_core::init_metrics(SERVICE);
 
-    // `[0, 0, 0, 0]` is 0.0.0.0 — every network interface. Binding to 127.0.0.1
-    // instead would make the service unreachable from outside its container.
+    // `[0, 0, 0, 0]` is 0.0.0.0 — every network interface. Binding to
+    // 127.0.0.1 instead would make the service unreachable from outside its
+    // container.
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     // The `?` operator: on `Ok(value)` it unwraps to `value`; on `Err(e)` it
@@ -151,7 +155,7 @@ mod tests {
             .uri("/echo")
             .header(header::CONTENT_TYPE, "application/json")
             // `r#"..."#` is a *raw string*: backslashes and quotes inside are
-            // literal, so JSON needs no escaping.
+            // literal, so JavaScript Object Notation needs no escaping.
             .body(Body::from(r#"{"message":"hello"}"#))
             .unwrap();
 
@@ -176,8 +180,9 @@ mod tests {
 
         let response = app().oneshot(request).await.unwrap();
 
-        // Nothing in this crate writes this rule: it falls out of `EchoRequest`
-        // requiring a `message` field, enforced by the `Json` extractor.
+        // Nothing in this crate writes this rule: it falls out of
+        // `EchoRequest` requiring a `message` field, enforced by the `Json`
+        // extractor.
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 

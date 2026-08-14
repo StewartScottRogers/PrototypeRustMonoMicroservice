@@ -1,17 +1,17 @@
 //! The message shapes every service agrees on.
 //!
-//! These types live in a shared crate rather than being duplicated per service.
-//! That is the monorepo paying for itself: change a field here and the compiler
-//! finds every producer and consumer that needs updating, instead of a decoding
-//! error appearing in production three weeks later.
+//! These types live in a shared crate rather than being duplicated per
+//! service. That is the monorepo paying for itself: change a field here and
+//! the compiler finds every producer and consumer that needs updating, instead
+//! of a decoding error appearing in production three weeks later.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// A command: "process this order."
 ///
-/// Commands are imperative and addressed to whoever does that work. Exactly one
-/// worker handles each.
+/// Commands are imperative and addressed to whoever does that work. Exactly
+/// one worker handles each.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OrderCommand {
     pub order_id: Uuid,
@@ -22,8 +22,8 @@ pub struct OrderCommand {
 /// An event: "this order completed."
 ///
 /// Events are past tense and addressed to nobody in particular. The publisher
-/// does not know or care who is listening, which is exactly what lets you add a
-/// subscriber without touching the publisher.
+/// does not know or care who is listening, which is exactly what lets you add
+/// a subscriber without touching the publisher.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OrderCompleted {
     pub order_id: Uuid,

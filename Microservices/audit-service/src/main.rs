@@ -11,8 +11,8 @@
 /// the shared messaging-core types with no broker and no sibling running.
 ///
 /// They live in src/ rather than tests/ because this is a binary-only crate:
-/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
-/// See .claude/skills/microservice-agent-team/SKILL.md.
+/// Rust's tests/ directory can import a crate's lib target, and there isn't
+/// one. See .claude/skills/microservice-agent-team/SKILL.md.
 #[cfg(test)]
 mod contract_tests;
 
@@ -42,8 +42,8 @@ async fn main() -> Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .context("DATABASE_URL must be set - this service records to Postgres")?;
 
-    // The schema lives in db-core, shared with the gateway - see that crate for
-    // why it is not duplicated per service.
+    // The schema lives in db-core, shared with the gateway - see that crate
+    // for why it is not duplicated per service.
     let pool = db_core::connect_and_migrate(&database_url).await?;
 
     let messaging = Messaging::connect(&nats_url).await?;
@@ -120,11 +120,12 @@ async fn consume(messaging: Messaging, pool: PgPool) -> Result<()> {
 /// Writes one audit row.
 ///
 /// `ON CONFLICT DO NOTHING` keyed on the message id makes this safe to run
-/// twice: at-least-once delivery means a redelivery is normal, and the database
-/// itself is the cleanest place to make the second write a no-op.
+/// twice: at-least-once delivery means a redelivery is normal, and the
+/// database itself is the cleanest place to make the second write a no-op.
 ///
 /// Note the `$1`-style placeholders and `.bind(...)`. Values never go into the
-/// SQL string, so a hostile item name cannot become SQL.
+/// Structured Query Language string, so a hostile item name cannot become
+/// Structured Query Language.
 async fn record(pool: &PgPool, envelope: &Envelope<OrderCompleted>) -> Result<()> {
     sqlx::query(
         "INSERT INTO audit_log (message_id, order_id, item, quantity, processed_by, occurred_at)

@@ -10,7 +10,8 @@
 //!
 //! The persistence side is tested by asserting the *mapping* — that every
 //! value the row needs is present on the event and typed compatibly. Testing
-//! the SQL itself would need a database, which belongs to the e2e suite.
+//! the Structured Query Language itself would need a database, which belongs
+//! to the end-to-end suite in the `e2e` crate.
 
 use messaging_core::{Envelope, OrderCompleted, subjects};
 

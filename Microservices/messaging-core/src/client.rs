@@ -33,8 +33,8 @@ impl Messaging {
             .with_context(|| format!("could not connect to NATS at {url}"))?;
 
         // Plain NATS is fire-and-forget: if nobody is listening the message is
-        // gone. JetStream adds the persistent log that makes durable consumers,
-        // redelivery and replay possible.
+        // gone. JetStream adds the persistent log that makes durable
+        // consumers, redelivery and replay possible.
         Ok(Self {
             jetstream: jetstream::new(client),
         })
@@ -78,13 +78,13 @@ impl Messaging {
 
     /// Publishes an envelope and waits for JetStream to confirm it is stored.
     ///
-    /// Note the two `.await`s on the publish line. The first sends the message;
-    /// the second waits for the server's acknowledgement. Dropping the second
-    /// would make this fire-and-forget, which quietly undoes the durability
-    /// JetStream is here to provide.
+    /// Note the two `.await`s on the publish line. The first sends the
+    /// message; the second waits for the server's acknowledgement. Dropping
+    /// the second would make this fire-and-forget, which quietly undoes the
+    /// durability JetStream is here to provide.
     ///
     /// `T: Serialize` is a *trait bound*: this method accepts any payload type
-    /// that serde can turn into JSON.
+    /// that serde can turn into JavaScript Object Notation.
     pub async fn publish<T>(&self, subject: &'static str, envelope: &Envelope<T>) -> Result<()>
     where
         T: Serialize,
@@ -96,8 +96,9 @@ impl Messaging {
         //
         // The envelope's own stored context wins when it has one. That matters
         // for the relay: the span it publishes under belongs to the relay, but
-        // the trace that should own the message belongs to the HTTP request
-        // that created the outbox row, possibly minutes earlier.
+        // the trace that should own the message belongs to the Hypertext
+        // Transfer Protocol request that created the outbox row, possibly
+        // minutes earlier.
         let mut headers = async_nats::HeaderMap::new();
         if envelope.trace.is_empty() {
             crate::trace::inject_current(&mut headers);
@@ -119,10 +120,10 @@ impl Messaging {
     /// Deletes a durable consumer if it exists.
     ///
     /// `get_or_create_consumer` returns an existing consumer *as it is* — it
-    /// never reconciles a changed config. A tool whose settings have been
-    /// corrected therefore keeps running under the old ones until something
-    /// removes the consumer. For a one-shot tool, starting clean every time is
-    /// simpler than reasoning about which settings drifted.
+    /// never reconciles a changed configuration. A tool whose settings have
+    /// been corrected therefore keeps running under the old ones until
+    /// something removes the consumer. For a one-shot tool, starting clean
+    /// every time is simpler than reasoning about which settings drifted.
     ///
     /// A consumer that does not exist is not an error; that is the desired end
     /// state either way.
@@ -151,8 +152,8 @@ impl Messaging {
     ///
     /// `durable_name`. Every process using the *same* name shares one position
     /// in the stream, so each message goes to exactly one of them — messaging.
-    /// Processes using *different* names each get their own position, so all of
-    /// them see every message — eventing.
+    /// Processes using *different* names each get their own position, so all
+    /// of them see every message — eventing.
     ///
     /// `max_deliver` caps redelivery: after that many failed attempts the
     /// worker routes the message to the dead-letter stream instead of looping

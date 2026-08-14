@@ -133,8 +133,8 @@ echo ===========================================================================
 echo  6. ONE TRACE, END TO END
 echo ===========================================================================
 echo.
-echo   Every hop above - HTTP, the outbox relay, the queue, both subscribers -
-echo   is one trace. Open Jaeger and pick service "gateway-service":
+echo   Every hop above - the incoming request, the outbox relay, the queue,
+echo   both subscribers - is one trace. Open Jaeger and pick "gateway-service":
 echo.
 echo       http://localhost:16686
 echo.

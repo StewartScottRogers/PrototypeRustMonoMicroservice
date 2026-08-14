@@ -9,7 +9,7 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
-  # DNS discovery rather than a static host list, because compose can run more
+  # Name-based discovery rather than a static host list, because compose can run more
   # than one copy of a service. `docker compose up --scale worker-service=4`
   # returns four A records for `worker-service`, and Prometheus scrapes all
   # four. A static target would have found exactly one of them and silently
@@ -30,7 +30,7 @@ scrape_configs:
     relabel_configs:
       # The discovered target is an IP, which is unreadable on a dashboard and
       # changes whenever a container restarts. Keep the instance label, but add
-      # a stable `service` label taken from the DNS name that found it.
+      # a stable `service` label taken from the resolved name that found it.
       - source_labels: [__meta_dns_name]
         target_label: service
 

@@ -7,9 +7,9 @@
 //! # Why this is its own process
 //!
 //! It began as a background task inside the gateway, which worked but coupled
-//! two unrelated things: running a second gateway for HTTP throughput would
-//! have started a second relay whether you wanted one or not. Separated, each
-//! scales for its own reason.
+//! two unrelated things: running a second gateway for Hypertext Transfer
+//! Protocol throughput would have started a second relay whether you wanted
+//! one or not. Separated, each scales for its own reason.
 //!
 //! Running more than one copy is safe either way — `FOR UPDATE SKIP LOCKED`
 //! means each instance claims a different set of rows rather than colliding.
@@ -25,8 +25,8 @@
 /// the shared messaging-core types with no broker and no sibling running.
 ///
 /// They live in src/ rather than tests/ because this is a binary-only crate:
-/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
-/// See .claude/skills/microservice-agent-team/SKILL.md.
+/// Rust's tests/ directory can import a crate's lib target, and there isn't
+/// one. See .claude/skills/microservice-agent-team/SKILL.md.
 #[cfg(test)]
 mod contract_tests;
 
@@ -90,7 +90,8 @@ async fn relay(pool: PgPool, messaging: Messaging) -> Result<()> {
             Ok(sent) => tracing::debug!(sent, "relayed outbox rows"),
             Err(error) => {
                 // Never exit the loop. The broker being briefly unavailable is
-                // ordinary, and the rows are safe in Postgres until it returns.
+                // ordinary, and the rows are safe in Postgres until it
+                // returns.
                 tracing::error!(%error, "outbox relay failed, retrying");
                 tokio::time::sleep(IDLE_INTERVAL).await;
             }
@@ -119,10 +120,11 @@ async fn publish_batch(pool: &PgPool, messaging: &Messaging) -> Result<usize> {
         let envelope: Envelope<OrderCommand> =
             serde_json::from_value(payload.clone()).context("an outbox row would not decode")?;
 
-        // The envelope carries the trace context captured when the HTTP request
-        // wrote the row, so the publish joins *that* trace rather than starting
-        // a fresh one here. Without it the chain from request to side effect
-        // breaks exactly at the point the outbox makes it durable.
+        // The envelope carries the trace context captured when the Hypertext
+        // Transfer Protocol request wrote the row, so the publish joins *that*
+        // trace rather than starting a fresh one here. Without it the chain
+        // from request to side effect breaks exactly at the point the outbox
+        // makes it durable.
         let span = messaging_core::trace::span_from_map(SERVICE, &envelope.trace);
 
         async {
@@ -130,8 +132,8 @@ async fn publish_batch(pool: &PgPool, messaging: &Messaging) -> Result<usize> {
                 .publish(subjects::ORDER_COMMAND_CREATED, &envelope)
                 .await?;
 
-            // Marked only after JetStream confirms it. Marking first would turn
-            // a broker failure into a lost message.
+            // Marked only after JetStream confirms it. Marking first would
+            // turn a broker failure into a lost message.
             sqlx::query("UPDATE outbox SET published_at = now() WHERE message_id = $1")
                 .bind(message_id)
                 .execute(pool)

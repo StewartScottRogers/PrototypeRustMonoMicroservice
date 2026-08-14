@@ -34,7 +34,7 @@ COPY . .
 # ARG is declared *after* the expensive layers on purpose. Declaring it earlier
 # makes its value part of the cache key for everything below it, so each
 # service would recompile the entire dependency tree from scratch instead of
-# sharing one cooked layer. That mistake cost a 25-minute CI timeout.
+# sharing one cooked layer. That mistake cost a 25-minute continuous integration timeout.
 ARG SERVICE
 RUN test -n "${SERVICE}" || (echo "build arg SERVICE is required" >&2; exit 1) \
  && cargo build --release --locked -p "${SERVICE}" \

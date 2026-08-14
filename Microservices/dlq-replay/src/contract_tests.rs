@@ -34,7 +34,7 @@ fn a_dead_letter_is_read_as_a_command_envelope() {
     // The tool's whole purpose depends on this: if the worker wrote a bespoke
     // shape instead of the original command, nothing could replay it.
     let envelope: Envelope<OrderCommand> =
-        serde_json::from_str(DEAD_LETTER).expect("the worker's DLQ shape must deserialise");
+        serde_json::from_str(DEAD_LETTER).expect("the worker's dead-letter shape must deserialise");
 
     assert_eq!(envelope.kind, "order.dead-letter");
     assert_eq!(envelope.data.item, "poison");

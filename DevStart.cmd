@@ -35,7 +35,7 @@ for /l %%i in (1,1,60) do (
             set "READY=1"
         ) else (
             rem `ping` rather than `timeout`, which refuses to run when stdin is
-            rem redirected - as it is from CI or another script. Three pings to
+            rem redirected - as it is from continuous integration or another script. Three pings to
             rem localhost is about two seconds.
             ping -n 3 127.0.0.1 >nul
         )

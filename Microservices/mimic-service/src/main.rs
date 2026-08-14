@@ -22,8 +22,8 @@
 /// the shared messaging-core types with no broker and no sibling running.
 ///
 /// They live in src/ rather than tests/ because this is a binary-only crate:
-/// Rust's tests/ directory can import a crate's lib target, and there isn't one.
-/// See .claude/skills/microservice-agent-team/SKILL.md.
+/// Rust's tests/ directory can import a crate's lib target, and there isn't
+/// one. See .claude/skills/microservice-agent-team/SKILL.md.
 #[cfg(test)]
 mod contract_tests;
 
@@ -57,9 +57,9 @@ const CONSOLE_HTML: &str = include_str!("../assets/console.html");
 
 /// The written walkthrough, served so the console can frame it.
 ///
-/// A `file://` link would work on this machine only, and could not be framed by
-/// a page served over http. Serving it makes the console self-contained and
-/// reachable from any machine on the network.
+/// A `file://` link would work on this machine only, and could not be framed
+/// by a page served over Hypertext Transfer Protocol. Serving it makes the
+/// console self-contained and reachable from any machine on the network.
 const DOCS_HTML: &str = include_str!("../../../docs/messaging-and-eventing.html");
 
 /// The most recent snapshot, shared between the poller and every request.
@@ -176,10 +176,11 @@ async fn docs() -> Html<&'static str> {
     Html(DOCS_HTML)
 }
 
-/// Serves the current snapshot as JSON, which is what the page polls.
+/// Serves the current snapshot as JavaScript Object Notation, which is what
+/// the page polls.
 ///
 /// Reads the shared value rather than querying Prometheus, so the cost of an
-/// extra browser tab is one JSON serialisation.
+/// extra browser tab is one JavaScript Object Notation serialisation.
 async fn state(State(shared): State<Shared>) -> impl IntoResponse {
     let snapshot = shared.read().await.clone();
     Json(snapshot)

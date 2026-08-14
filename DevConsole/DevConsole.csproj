@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The F5 entry point for this repository.
+
+    Everything else in the solution is a shared project (.shproj) that produces
+    no build output and cannot be started, so this is the only runnable project
+    Visual Studio can find - which is exactly what makes it the default startup
+    project without anyone having to set one. A developer clones the repo,
+    opens the solution, presses F5, and the whole compose stack comes up.
+
+    It builds nothing that the services need. Deleting it would cost the F5
+    gesture and nothing else; the Dev*.cmd scripts remain the real interface.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      Windows-only by construction: it shells out to .cmd batch files through
+      cmd.exe. Saying so here turns a confusing failure at run time on another
+      platform into a diagnostic at build time.
+    -->
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+
+    <!-- Warnings are errors here for the same reason clippy is -D warnings. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!--
+      No launch profile ceremony: the default profile runs the executable with
+      no arguments, which means DevConsole.cmd. Named profiles for the other
+      scripts live in Properties/launchSettings.json.
+    -->
+    <AssemblyName>DevConsole</AssemblyName>
+    <RootNamespace>DevConsole</RootNamespace>
+  </PropertyGroup>
+
+</Project>

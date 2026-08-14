@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Print a JSON array of workspace crates that produce a binary — i.e. the ones
+# Print a JavaScript Object Notation array of workspace crates that produce a binary — i.e. the ones
 # that get a container image. Library crates like service-core are excluded.
 #
 # Run from the workspace root. Needs cargo and jq.

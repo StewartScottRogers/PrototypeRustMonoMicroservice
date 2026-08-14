@@ -12,9 +12,10 @@ use messaging_core::{Envelope, OrderCompleted, subjects};
 
 /// An event in exactly the shape worker-service publishes.
 ///
-/// Deliberately raw JSON rather than built from our own types: a fixture made
-/// with `Envelope::new` would keep passing even if the type drifted away from
-/// the contract, because both sides would drift together.
+/// Deliberately raw JavaScript Object Notation rather than built from our own
+/// types: a fixture made with `Envelope::new` would keep passing even if the
+/// type drifted away from the contract, because both sides would drift
+/// together.
 const EVENT_FIXTURE: &str = r#"{
     "id": "9c2e7b41-5d3a-4f8e-b1c6-2a7d9e0f3b58",
     "kind": "order.completed",

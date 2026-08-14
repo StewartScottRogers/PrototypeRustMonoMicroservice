@@ -1,11 +1,12 @@
 ---
 name: messaging-and-eventing
 description: >
-  The asynchronous half of this system — NATS/JetStream messaging vs eventing,
-  the transactional outbox, idempotent consumers, retry and dead-lettering, and
-  distributed tracing across the broker. Use when adding a message or event
-  type, adding a consumer, debugging a message that was not delivered or was
-  delivered twice, or when a trace stops at a service boundary.
+  The asynchronous half of this system — messaging compared with eventing on
+  NATS and JetStream, the transactional outbox, idempotent consumers, retry and
+  dead-lettering, and distributed tracing across the broker. Use when adding a
+  message or event type, adding a consumer, debugging a message that was not
+  delivered or was delivered twice, or when a trace stops at a service
+  boundary.
 ---
 
 # Messaging and eventing
@@ -28,13 +29,18 @@ you --POST /order--> gateway --order + message in ONE transaction--> postgres
          notifier consumer     audit consumer
 ```
 
+> **Write everything out in full.** No acronyms or abbreviations in prose. A
+> widely recognised acronym may follow the full term in parentheses on first
+> mention only. Identifiers — subjects, stream names, constants — stay as they
+> are.
+
 ## The distinction, in one line
 
 **Messaging** is a command — one consumer does the work. **Eventing** is a
 fact — every subscriber gets a copy.
 
-In JetStream both use the same streams and the same API. The *only* difference
-is the durable consumer name:
+In JetStream both use the same streams and the same programming interface. The
+*only* difference is the durable consumer name:
 
 | | Consumer name | Add a second process |
 | --- | --- | --- |
@@ -47,41 +53,44 @@ If you cannot say which of the two a new subject is, it is a command.
 
 1. **Never publish inside the same operation that writes state.** Use the
    outbox: the row and the message go into one transaction, and a relay
-   publishes afterwards. Publishing directly leaves a window where the state is
-   committed and the message is lost, with nothing left to show it existed.
+   publishes afterwards. Publishing directly leaves a window where the state
+   is committed and the message is lost, with nothing left to show it existed.
 
 2. **Mark an outbox row published only after JetStream acknowledges it.**
-   Marking first turns a broker blip into a lost message — the exact failure the
-   outbox exists to prevent.
+   Marking first turns a momentary broker failure into a lost message — the
+   exact failure the outbox exists to prevent.
 
 3. **Every consumer must be idempotent.** At-least-once delivery means
    duplicates are normal operation, not a bug. Either the work is naturally
-   repeatable, or dedupe it — `IdempotencyGuard` for side effects, or
-   `ON CONFLICT DO NOTHING` when the effect is a row.
+   repeatable, or remove the duplicates — `IdempotencyGuard` for side effects,
+   or `ON CONFLICT DO NOTHING` when the effect is a row.
 
-4. **Release the idempotency claim when processing fails.** `guard.forget(id)`.
-   Claiming the key up front and never releasing it means the retry is mistaken
-   for a duplicate and the message is lost *because* you tried to be safe.
+4. **Release the idempotency claim when processing fails.**
+   `guard.forget(id)`. Claiming the key up front and never releasing it means
+   the retry is mistaken for a duplicate and the message is lost *because* you
+   tried to be safe.
 
 5. **Cap redelivery and dead-letter the remainder.** A message that can never
-   succeed will otherwise be redelivered forever and block the queue behind it.
-   `max_deliver` on the consumer must match `MAX_DELIVER` in the worker.
+   succeed will otherwise be redelivered forever and block the queue behind
+   it. `max_deliver` on the consumer must match `MAX_DELIVER` in the worker.
 
-6. **Dedupe on the business key, not the message id.** `order_id`, not
-   `envelope.id`. Message ids only catch broker redeliveries; business keys also
-   catch a client submitting the same thing twice, which is the duplicate people
-   actually hit.
+6. **Remove duplicates by the business key, not the message identifier.** Use
+   `order_id`, not `envelope.id`. Message identifiers only catch broker
+   redeliveries; business keys also catch a client submitting the same thing
+   twice, which is the duplicate people actually hit.
 
-7. **Publish with headers, always.** `Messaging::publish` injects the W3C
-   `traceparent` so the consumer continues the trace. Bypassing it with a raw
-   `jetstream.publish` produces an orphaned trace and no error.
+7. **Publish with headers, always.** `Messaging::publish` injects the World
+   Wide Web Consortium `traceparent` header so the consumer continues the
+   trace. Bypassing it with a raw `jetstream.publish` produces an orphaned
+   trace and no error.
 
 ## Adding a message or event type
 
-1. Add the payload struct to `messaging-core/src/contract.rs`. Both ends of the
-   wire come from that one definition, so a field change is a compile error in
-   every producer and consumer rather than a decode failure in production.
-2. Add the subject and any stream/consumer names to
+1. Add the payload struct to `messaging-core/src/contract.rs`. Both ends of
+   the wire come from that one definition, so a field change is a compile
+   error in every producer and consumer rather than a decode failure in
+   production.
+2. Add the subject and any stream or consumer names to
    `messaging-core/src/subjects.rs`. Never write a subject string inline.
 3. If it needs a new stream, add it to `Messaging::ensure_streams`.
 4. Consumers: copy `notifier-service`. A *new reaction* gets a new consumer
@@ -91,10 +100,11 @@ If you cannot say which of the two a new subject is, it is a command.
 
 Trace context rides in NATS headers. `trace::inject_current` writes it on
 publish; `trace::span_for_message` reads it and parents the handling span. The
-result is one trace covering the HTTP request, the broker hop and every
-subscriber — which matters because eventing deliberately hides who caused what.
+result is one trace covering the incoming request, the broker hop and every
+subscriber — which matters because eventing deliberately hides who caused
+what.
 
-Confirm it end to end:
+Confirm it from end to end:
 
 ```
 curl -s http://localhost:16686/api/services
@@ -103,31 +113,33 @@ curl -s "http://localhost:16686/api/traces?service=worker-service&limit=1"
 
 ## Debugging
 
-- **A message is never delivered**: check the subject matches the stream's
-  filter. `orders.command.>` will not capture `order.command.created`.
-- **A message is delivered repeatedly**: something is not acking. An error
-  before `message.ack()` means JetStream redelivers after `ack_wait`.
+- **A message is never delivered**: check that the subject matches the filter
+  on the stream. `orders.command.>` will not capture `order.command.created`.
+- **A message is delivered repeatedly**: something is not acknowledging. An
+  error before `message.ack()` means JetStream redelivers after `ack_wait`.
 - **Two consumers split events instead of both getting them**: they share a
   durable name. That is messaging; give them separate names.
 - **A trace stops at a service boundary**: the publisher bypassed
   `Messaging::publish`, or `init_tracing` ran without
   `OTEL_EXPORTER_OTLP_ENDPOINT` set.
 - **Inspect the streams**: `http://localhost:8222/jsz?streams=1` on the NATS
-  monitoring port shows message counts per stream, including the DLQ.
+  monitoring port shows message counts per stream, including the dead-letter
+  stream (`ORDER_DLQ`).
 
 ## Schema versions
 
 Every envelope carries `schema_version`. The rule: **additive changes keep the
-version; anything that could break an existing reader increments it.** Adding an
-optional field is additive; renaming, removing or retyping one is not.
+version; anything that could break an existing reader increments it.** Adding
+an optional field is additive; renaming, removing or changing the type of one
+is not.
 
-This matters because a stream holds messages for as long as its retention says,
-so a deploy puts two payload shapes in flight at once. A consumer meeting an
-unsupported version must not guess — the worker dead-letters it, the subscribers
-log and skip. Dropping it loses data; processing it risks acting on a misread
-payload.
+This matters because a stream holds messages for as long as its retention
+policy says, so a deployment puts two payload shapes in flight at once. A
+consumer meeting an unsupported version must not guess — the worker
+dead-letters it, and the subscribers log it and skip it. Dropping it loses
+data; processing it risks acting on a misread payload.
 
-Messages written before versioning existed decode as version 1, via
+Messages written before versioning existed decode as version 1, by way of
 `#[serde(default)]`.
 
 ## Draining the dead-letter queue
@@ -147,21 +159,24 @@ precisely for failing repeatedly.
 Two things it learned the hard way, both worth keeping:
 
 - **Unlimited redelivery** (`max_deliver: -1`). Anything finite means a failed
-  or abandoned drain permanently strands the messages you least wanted to lose.
-  An earlier version used `1`, and a single dry run made the queue undrainable.
-- **A dry run Naks with a delay.** A bare `Nak` redelivers immediately, so the
-  drain loop keeps meeting the same messages and never reaches its idle timeout.
+  or abandoned drain permanently strands the messages you least wanted to
+  lose. An earlier version used `1`, and a single dry run made the queue
+  impossible to drain.
+- **A dry run negatively acknowledges with a delay.** A bare `Nak` redelivers
+  immediately, so the drain loop keeps meeting the same messages and never
+  reaches its idle timeout.
 
-The tool deletes and recreates its own consumer each run, because
+The tool deletes and recreates its own consumer on each run, because
 `get_or_create_consumer` returns an existing consumer *as it is* and never
-reconciles a changed config — corrected settings would otherwise never apply.
+reconciles a changed configuration — corrected settings would otherwise never
+apply.
 
 ## Known gaps
 
-1. **No consumer lag alerting.** Nothing notices if the worker falls behind.
-   `http://localhost:8222/jsz?consumers=1` reports `num_pending` per consumer;
-   nothing scrapes it.
-2. **The dead-letter stream has no age limit.** Messages sit there until someone
-   runs the replay tool.
-3. **Retry backoff is fixed, not escalating.** Fine for a demo; a real system
-   would widen the gap between attempts.
+1. **No alerting on consumer lag.** Nothing notices if the worker falls
+   behind. `http://localhost:8222/jsz?consumers=1` reports `num_pending` per
+   consumer; nothing scrapes it.
+2. **The dead-letter stream has no age limit.** Messages sit there until
+   someone runs the replay tool.
+3. **Retry backoff is fixed, not escalating.** Fine for a demonstration; a
+   real system would widen the gap between attempts.
