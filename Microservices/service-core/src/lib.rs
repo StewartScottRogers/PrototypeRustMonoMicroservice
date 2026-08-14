@@ -24,6 +24,7 @@
 // the directory for stray files, everything is declared explicitly.
 pub mod config;
 pub mod health;
+pub mod metrics;
 pub mod telemetry;
 
 // `pub use` re-exports an item under a shorter path. Callers can write
@@ -33,5 +34,6 @@ pub mod telemetry;
 // Note the crate is named `service-core` with a hyphen in Cargo.toml, but Rust
 // identifiers cannot contain hyphens, so in code it becomes `service_core`.
 pub use config::port_from_env;
-pub use health::{Probe, health_routes, self_check};
+pub use health::{Probe, health_routes, metrics_routes, self_check};
+pub use metrics::init_metrics;
 pub use telemetry::init_tracing;

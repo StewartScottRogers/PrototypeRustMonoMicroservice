@@ -12,6 +12,8 @@ workspace = true
 
 [dependencies]
 axum.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
 opentelemetry.workspace = true
 opentelemetry-otlp.workspace = true
 opentelemetry_sdk.workspace = true

@@ -1,0 +1,21 @@
+# Provisioned so Grafana comes up already connected. Clicking through a setup
+# wizard on every fresh volume is exactly the friction DevStart.cmd exists to
+# remove.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    # Pinned rather than generated, because the dashboard JSON references it by
+    # uid. Letting Grafana invent one means the panels come up saying
+    # "datasource not found" on a fresh volume.
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Must match prometheus.yml, or Grafana's auto-chosen step can be finer
+      # than the data and the graphs come out full of gaps.
+      timeInterval: 5s

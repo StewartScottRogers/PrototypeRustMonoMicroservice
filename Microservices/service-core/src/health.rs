@@ -83,8 +83,29 @@ async fn probe(status: &'static str, service: String) -> Json<Probe> {
 pub async fn serve(service: &'static str, port: u16) -> std::io::Result<()> {
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!(%addr, "health endpoints listening");
-    axum::serve(listener, health_routes(service)).await
+    tracing::info!(%addr, "health and metrics endpoints listening");
+    axum::serve(listener, health_routes(service).merge(metrics_routes())).await
+}
+
+/// Mounts `/metrics` for Prometheus to scrape.
+///
+/// Merged into every service's router, so adding a service means Prometheus
+/// finds it without anyone remembering to wire an endpoint up.
+pub fn metrics_routes() -> Router {
+    Router::new().route("/metrics", get(scrape))
+}
+
+/// Renders the metrics in the text format Prometheus expects.
+///
+/// The content type matters: without it Prometheus refuses the response.
+async fn scrape() -> impl axum::response::IntoResponse {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
+        crate::metrics::render(),
+    )
 }
 
 /// Asks `http://127.0.0.1:{port}/healthz` whether the service is alive.

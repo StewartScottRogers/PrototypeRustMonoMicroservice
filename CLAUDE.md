@@ -22,7 +22,8 @@ Services:
 - `Microservices/dlq-replay` — one-shot tool that puts dead letters back on the queue. Run with `DevReplay.cmd`, never automatically.
 - `Microservices/echo-service` — the original synchronous HTTP example. Copy it to start a simple service.
 
-- `compose.yaml` + `Dev*.cmd` — the local stack: 5 services, NATS, Jaeger, Postgres, Redis. `DevDemo.cmd` narrates the whole demonstration. See `.claude/skills/dev-environment/SKILL.md` and `.claude/skills/messaging-and-eventing/SKILL.md`.
+- `observability/` — Prometheus scrape config and Grafana provisioning. Dashboards live in version control, not in Grafana's database, so a panel change is reviewable in a PR.
+- `compose.yaml` + `Dev*.cmd` — the local stack: 6 services, NATS, Jaeger, Prometheus, Grafana, Postgres, Redis. Grafana on :3000, Jaeger on :16686. `DevDemo.cmd` narrates the whole demonstration. See `.claude/skills/dev-environment/SKILL.md` and `.claude/skills/messaging-and-eventing/SKILL.md`.
 - `.github/workflows/ci.yml` + `.github/actions/setup-rust` + `.github/scripts/affected-crates.sh` — the CI gate. Rules and failure modes are documented in `.claude/skills/rust-ci-gate/SKILL.md`; read that before changing CI.
 - `Dockerfile` + `.github/workflows/image.yml` — one parameterised image build for every service, published to GHCR with a provenance attestation and a Trivy CVE scan. See `.claude/skills/rust-service-image/SKILL.md`.
 - `.github/workflows/security.yml` — CodeQL (public repos only), zizmor workflow audit, gitleaks secret scan. Every third-party action is pinned to a commit SHA; see `.claude/skills/gh-supply-chain/SKILL.md` before adding one.

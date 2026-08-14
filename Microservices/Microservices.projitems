@@ -13,6 +13,7 @@
     <None Include="$(MSBuildThisFileDirectory)service-core\src\lib.rs" />
     <None Include="$(MSBuildThisFileDirectory)service-core\src\config.rs" />
     <None Include="$(MSBuildThisFileDirectory)service-core\src\health.rs" />
+    <None Include="$(MSBuildThisFileDirectory)service-core\src\metrics.rs" />
     <None Include="$(MSBuildThisFileDirectory)service-core\src\telemetry.rs" />
     <None Include="$(MSBuildThisFileDirectory)echo-service\Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)echo-service\src\main.rs" />

@@ -27,5 +27,9 @@
     <None Include="$(MSBuildThisFileDirectory)..\DevStop.cmd" Link="DevStop.cmd" />
     <None Include="$(MSBuildThisFileDirectory)..\DevDelete.cmd" Link="DevDelete.cmd" />
     <None Include="$(MSBuildThisFileDirectory)..\DevRemove.cmd" Link="DevRemove.cmd" />
+    <None Include="$(MSBuildThisFileDirectory)..\observability\prometheus.yml" Link="observability\prometheus.yml" />
+    <None Include="$(MSBuildThisFileDirectory)..\observability\grafana\provisioning\datasources\prometheus.yml" Link="observability\grafana\datasource.yml" />
+    <None Include="$(MSBuildThisFileDirectory)..\observability\grafana\provisioning\dashboards\provider.yml" Link="observability\grafana\provider.yml" />
+    <None Include="$(MSBuildThisFileDirectory)..\observability\grafana\dashboards\orders.json" Link="observability\grafana\orders.json" />
   </ItemGroup>
 </Project>

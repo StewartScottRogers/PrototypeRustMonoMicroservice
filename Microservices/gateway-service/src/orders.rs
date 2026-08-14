@@ -164,6 +164,7 @@ async fn accept(pool: &PgPool, order_id: Uuid, request: &PlaceOrder) -> Result<(
         .await
         .context("could not commit the order")?;
 
+    metrics::counter!(service_core::metrics::ORDERS_ACCEPTED).increment(1);
     tracing::info!(%order_id, item = %request.item, "order accepted and queued in the outbox");
     Ok(())
 }

@@ -14,6 +14,7 @@ workspace = true
 anyhow.workspace = true
 futures.workspace = true
 messaging-core.workspace = true
+metrics.workspace = true
 serde_json.workspace = true
 service-core.workspace = true
 tokio.workspace = true

@@ -46,6 +46,7 @@ async fn main() -> Result<()> {
     }
 
     init_tracing(SERVICE);
+    service_core::init_metrics();
 
     // Docker sets HOSTNAME to the container id, which differs per replica. That
     // is what makes "which worker handled this" visible in the demo.
@@ -165,6 +166,7 @@ async fn handle(
         // of the same order are the duplicate worth catching, and each of those
         // carries its own message id.
         if !guard.first_time_seeing(order.order_id).await? {
+            metrics::counter!(service_core::metrics::ORDERS_DUPLICATE).increment(1);
             tracing::info!(
                 order_id = %order.order_id,
                 "already processed, skipping (idempotency)"
@@ -173,7 +175,15 @@ async fn handle(
             return Ok(());
         }
 
-        match process(order, instance) {
+        // Timed around the work itself, not the whole loop iteration, so the
+        // measurement is of processing rather than of how long the message sat
+        // waiting to be picked up.
+        let started = std::time::Instant::now();
+        let outcome = process(order, instance);
+        metrics::histogram!(service_core::metrics::PROCESSING_SECONDS)
+            .record(started.elapsed().as_secs_f64());
+
+        match outcome {
             Ok(completed) => {
                 messaging
                     .publish(
@@ -182,6 +192,7 @@ async fn handle(
                     )
                     .await?;
 
+                metrics::counter!(service_core::metrics::ORDERS_PROCESSED).increment(1);
                 message.ack().await.ok();
             }
             Err(error) => {
@@ -205,6 +216,8 @@ async fn handle(
                         )
                         .await?;
 
+                    metrics::counter!(service_core::metrics::ORDERS_DEAD_LETTERED).increment(1);
+
                     // Ack the original: it is safely stored in the DLQ now, and
                     // leaving it unacked would block the queue.
                     message.ack().await.ok();
@@ -215,6 +228,8 @@ async fn handle(
                         %error,
                         "failed, will retry"
                     );
+
+                    metrics::counter!(service_core::metrics::ORDERS_RETRIED).increment(1);
 
                     // Nak = "not acknowledged, try again", with a delay.
                     message

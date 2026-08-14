@@ -27,6 +27,7 @@ async fn main() -> Result<()> {
     }
 
     init_tracing(SERVICE);
+    service_core::init_metrics();
 
     let nats_url = std::env::var("NATS_URL").unwrap_or_else(|_| "nats://nats:4222".to_owned());
     let database_url = std::env::var("DATABASE_URL")
@@ -78,6 +79,9 @@ async fn consume(messaging: Messaging, pool: PgPool) -> Result<()> {
                     );
                 }
                 Ok(envelope) => {
+                    metrics::counter!(service_core::metrics::EVENTS_HANDLED, "service" => SERVICE)
+                        .increment(1);
+
                     if let Err(error) = record(&pool, &envelope).await {
                         tracing::error!(%error, "could not write the audit row");
                     } else {

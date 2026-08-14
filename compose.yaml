@@ -223,6 +223,54 @@ services:
     # is the correct trade for observability.
     restart: unless-stopped
 
+  # Scrapes /metrics from every service every 5 seconds. That interval is far
+  # more frequent than production would use; a demo you have to wait a minute
+  # to see react is not a demo.
+  prometheus:
+    image: prom/prometheus:v3.13.2
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+      # Needed by Grafana's "Explore" view to query the raw series.
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    # The image is distroless - no shell, no wget - so the healthcheck runs
+    # Prometheus' own binary, the same trick the Rust services use.
+    healthcheck:
+      test: ["CMD", "promtool", "check", "healthy", "--url=http://localhost:9090"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.1.3
+    environment:
+      # Anonymous admin access. Correct for a local demo, catastrophic anywhere
+      # else - there is no login page at all with this set.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # Opens straight on the dashboard rather than an empty home page.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/orders.json
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      # Datasource and dashboards are provisioned from version control, so a
+      # fresh volume comes up fully configured and DevRemove.cmd cannot destroy
+      # a dashboard someone spent an afternoon on.
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus: { condition: service_healthy }
+    restart: unless-stopped
+
   postgres:
     image: postgres:17-alpine
     environment:
@@ -262,3 +310,5 @@ volumes:
   nats-data:
   postgres-data:
   redis-data:
+  prometheus-data:
+  grafana-data:

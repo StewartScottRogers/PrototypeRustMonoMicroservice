@@ -47,6 +47,7 @@ async fn main() -> Result<()> {
     }
 
     init_tracing(SERVICE);
+    service_core::init_metrics();
 
     let database_url = std::env::var("DATABASE_URL")
         .context("DATABASE_URL must be set - the outbox lives in Postgres")?;
@@ -128,6 +129,7 @@ async fn publish_batch(pool: &PgPool, messaging: &Messaging) -> Result<usize> {
                 .await
                 .context("could not mark the outbox row published")?;
 
+            metrics::counter!(service_core::metrics::OUTBOX_RELAYED).increment(1);
             tracing::info!(%message_id, "relayed");
             Ok::<(), anyhow::Error>(())
         }

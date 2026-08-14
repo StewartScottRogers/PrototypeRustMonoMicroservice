@@ -37,6 +37,7 @@ async fn main() -> Result<()> {
     }
 
     init_tracing(SERVICE);
+    service_core::init_metrics();
 
     let nats_url = std::env::var("NATS_URL").unwrap_or_else(|_| "nats://nats:4222".to_owned());
     let messaging = Messaging::connect(&nats_url).await?;
@@ -85,6 +86,11 @@ async fn consume(messaging: Messaging) -> Result<()> {
                     );
                 }
                 Ok(envelope) => {
+                    // Labelled by service, so one metric covers every
+                    // subscriber and an imbalance between them is visible.
+                    metrics::counter!(service_core::metrics::EVENTS_HANDLED, "service" => SERVICE)
+                        .increment(1);
+
                     let event = &envelope.data;
                     tracing::info!(
                         order_id = %event.order_id,
