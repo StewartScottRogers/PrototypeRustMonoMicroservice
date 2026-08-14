@@ -1,13 +1,13 @@
 //! Contract tests for echo-service.
 //!
-//! This service has an **HTTP** contract rather than a messaging one — it
-//! publishes nothing and consumes nothing from NATS. Its neighbour is
-//! gateway-service, which calls `POST /echo` synchronously.
+//! This service has a **Hypertext Transfer Protocol** contract rather than a
+//! messaging one — it publishes nothing and consumes nothing from NATS. Its
+//! neighbour is gateway-service, which calls `POST /echo` synchronously.
 //!
-//! The obligations are the same shape as everywhere else, just over HTTP:
-//! prove the response body matches what the caller parses, and prove the
-//! request body survives anything contract-shaped, including fields this
-//! build has never seen.
+//! The obligations are the same shape as everywhere else, just over Hypertext
+//! Transfer Protocol: prove the response body matches what the caller parses,
+//! and prove the request body survives anything contract-shaped, including
+//! fields this build has never seen.
 
 use crate::{EchoRequest, EchoResponse};
 

@@ -166,11 +166,11 @@
     const stage = $("stage");
 
     if (!tab.url) {
-      // /api/links has not answered yet, or this tool has no URL configured.
+      // /api/links has not answered yet, or this tool has no address configured.
       blocked.classList.add("show");
       $("blocked-title").textContent = tab.label + " is not configured";
       $("blocked-body").textContent =
-        "No URL was supplied for this tool. Check the environment passed to mimic-service in compose.yaml.";
+        "No address was supplied for this tool. Check the environment passed to mimic-service in compose.yaml.";
       $("blocked-link").href = "#";
       return;
     }

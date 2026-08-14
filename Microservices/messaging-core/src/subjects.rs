@@ -1,9 +1,9 @@
 //! The names every service agrees on.
 //!
-//! NATS subjects are dotted strings, and `>` is a wildcard matching one or more
-//! trailing tokens. Keeping them in one file means a typo is a compile error in
-//! the crate that owns the name, rather than a message that silently goes
-//! nowhere — which is the classic way to lose an afternoon with a broker.
+//! NATS subjects are dotted strings, and `>` is a wildcard matching one or
+//! more trailing tokens. Keeping them in one file means a typo is a compile
+//! error in the crate that owns the name, rather than a message that silently
+//! goes nowhere — which is the classic way to lose an afternoon with a broker.
 
 /// Commands: "do this". One worker handles each.
 pub const ORDER_COMMAND_CREATED: &str = "orders.command.created";

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # End-to-end check of the compose stack. This is the Linux counterpart of
-# DevDemo.cmd: the .cmd file narrates for a human, this one asserts for CI.
+# DevDemo.cmd: the .cmd file narrates for a human, this one asserts for continuous integration.
 #
 #   .github/scripts/smoke-test.sh
 #

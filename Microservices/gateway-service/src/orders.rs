@@ -10,14 +10,14 @@
 //! ```
 //!
 //! and it has a hole you cannot close by reordering. If the process dies
-//! between 1 and 2, the order exists and nothing will ever process it. Swap the
-//! steps and the opposite happens: a command is processed for an order that was
-//! never stored.
+//! between 1 and 2, the order exists and nothing will ever process it. Swap
+//! the steps and the opposite happens: a command is processed for an order
+//! that was never stored.
 //!
 //! # The transactional outbox
 //!
-//! Write the order *and* the message into the same database transaction. Either
-//! both land or neither does — that is what a transaction is for.
+//! Write the order *and* the message into the same database transaction.
+//! Either both land or neither does — that is what a transaction is for.
 //!
 //! ```text
 //! BEGIN
@@ -27,8 +27,8 @@
 //! ```
 //!
 //! `outbox-relay` then publishes those rows. That used to be a background task
-//! in this service; it is a separate process now, so HTTP throughput and relay
-//! throughput scale for their own reasons.
+//! in this service; it is a separate process now, so Hypertext Transfer
+//! Protocol throughput and relay throughput scale for their own reasons.
 //!
 //! Losing a message is unrecoverable. Sending one twice is a solved problem.
 //! The outbox trades the first for the second.
@@ -56,8 +56,8 @@ pub struct PlaceOrder {
     /// Optional. Supplying the same id twice is how the demo proves the worker
     /// is idempotent: two accepted orders, one lot of work done.
     ///
-    /// `#[serde(default)]` makes the field optional in the JSON rather than
-    /// required-but-nullable.
+    /// `#[serde(default)]` makes the field optional in the JavaScript Object
+    /// Notation rather than required-but-nullable.
     #[serde(default)]
     pub order_id: Option<Uuid>,
 }
@@ -123,8 +123,9 @@ async fn accept(pool: &PgPool, order_id: Uuid, request: &PlaceOrder) -> Result<(
     };
 
     // Built inside this span on purpose: Envelope::new captures the active
-    // trace context into the envelope, which is then stored as JSON in the
-    // outbox row. That is how the trace survives until the relay picks it up.
+    // trace context into the envelope, which is then stored as JavaScript
+    // Object Notation in the outbox row. That is how the trace survives until
+    // the relay picks it up.
     let envelope = Envelope::new("order.created", command);
     let payload = serde_json::to_value(&envelope).context("could not encode the command")?;
 

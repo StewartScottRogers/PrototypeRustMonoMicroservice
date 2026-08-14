@@ -49,15 +49,16 @@ pub struct Envelope<T> {
     pub schema_version: u32,
     /// When the thing actually happened, not when it was delivered.
     pub occurred_at: DateTime<Utc>,
-    /// W3C trace context captured where the message was created.
+    /// World Wide Web Consortium trace context captured where the message was
+    /// created.
     ///
     /// Carrying it *in the envelope* rather than only in the broker headers is
-    /// what lets a trace survive the outbox: the envelope is stored as JSON in
-    /// Postgres, so the context is still there minutes later when the relay
-    /// picks the row up on a different task.
+    /// what lets a trace survive the outbox: the envelope is stored as
+    /// JavaScript Object Notation in Postgres, so the context is still there
+    /// minutes later when the relay picks the row up on a different task.
     ///
-    /// `BTreeMap` rather than `HashMap` so the JSON field order is stable,
-    /// which keeps stored rows diffable.
+    /// `BTreeMap` rather than `HashMap` so the JavaScript Object Notation
+    /// field order is stable, which keeps stored rows diffable.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub trace: BTreeMap<String, String>,
     /// The actual message.
@@ -74,7 +75,8 @@ impl<T> Envelope<T> {
     /// version, and whatever trace context is active right now.
     ///
     /// `impl Into<String>` accepts anything convertible to a `String` — both a
-    /// `&str` literal and an owned `String` — so callers need no `.to_owned()`.
+    /// `&str` literal and an owned `String` — so callers need no
+    /// `.to_owned()`.
     pub fn new(kind: impl Into<String>, data: T) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -88,9 +90,9 @@ impl<T> Envelope<T> {
 
     /// Whether this service can safely handle the message.
     ///
-    /// A consumer that meets an unsupported version must not guess. Dropping it
-    /// loses data and processing it risks acting on a misread payload; routing
-    /// it to the dead-letter queue keeps it for a human.
+    /// A consumer that meets an unsupported version must not guess. Dropping
+    /// it loses data and processing it risks acting on a misread payload;
+    /// routing it to the dead-letter queue keeps it for a human.
     pub fn is_supported(&self) -> bool {
         self.schema_version == SCHEMA_VERSION
     }
@@ -156,8 +158,8 @@ mod tests {
 
     #[test]
     fn a_message_written_before_versioning_decodes_as_version_one() {
-        // Exactly what an older producer would have written: no schema_version,
-        // no trace. It must still decode rather than fail.
+        // Exactly what an older producer would have written: no
+        // schema_version, no trace. It must still decode rather than fail.
         let legacy = r#"{
             "id": "0d4f0a4a-1f5b-4a2e-9f6a-1b2c3d4e5f60",
             "kind": "test.kind",

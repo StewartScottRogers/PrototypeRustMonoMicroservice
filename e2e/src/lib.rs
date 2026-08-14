@@ -64,8 +64,8 @@ impl Endpoints {
     }
 }
 
-// `Default` is the conventional trait for "give me the usual one". Implementing
-// it in terms of `from_env` means `Endpoints::default()` and
+// `Default` is the conventional trait for "give me the usual one".
+// Implementing it in terms of `from_env` means `Endpoints::default()` and
 // `Endpoints::from_env()` can never drift apart.
 impl Default for Endpoints {
     fn default() -> Self {
@@ -83,7 +83,8 @@ pub struct Harness {
 }
 
 impl Harness {
-    /// Builds a harness pointing at wherever the environment says the stack is.
+    /// Builds a harness pointing at wherever the environment says the stack
+    /// is.
     pub fn new() -> Self {
         Self {
             endpoints: Endpoints::from_env(),
@@ -96,9 +97,9 @@ impl Harness {
     /// Passing `order_id` re-submits an existing order, which is how the
     /// idempotency test proves the worker does the work only once.
     ///
-    /// The gateway answers `202 Accepted`, never `200 OK` — the order is stored
-    /// but nothing has processed it yet, and this asserts that distinction
-    /// rather than accepting any success code.
+    /// The gateway answers `202 Accepted`, never `200 OK` — the order is
+    /// stored but nothing has processed it yet, and this asserts that
+    /// distinction rather than accepting any success code.
     pub async fn place_order(
         &self,
         item: &str,
@@ -129,14 +130,15 @@ impl Harness {
         let accepted: serde_json::Value = response
             .json()
             .await
-            .context("the gateway's response was not JSON")?;
+            .context("the gateway's response was not JavaScript Object Notation")?;
 
         let id = accepted
             .get("order_id")
             .and_then(serde_json::Value::as_str)
             .context("the gateway's response carried no order_id")?;
 
-        uuid::Uuid::parse_str(id).context("the gateway returned an order_id that is not a UUID")
+        uuid::Uuid::parse_str(id)
+            .context("the gateway returned an order_id that is not a universally unique identifier")
     }
 
     /// Runs one Prometheus instant query and returns the first sample.
@@ -161,7 +163,10 @@ impl Harness {
             .await
             .context("Prometheus did not answer")?;
 
-        let body: serde_json::Value = response.json().await.context("Prometheus sent no JSON")?;
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .context("Prometheus sent no JavaScript Object Notation")?;
 
         let sample = body
             .get("data")
@@ -177,7 +182,8 @@ impl Harness {
         Ok(sample)
     }
 
-    /// Total messages held by a JetStream stream, from the NATS monitoring port.
+    /// Total messages held by a JetStream stream, from the NATS monitoring
+    /// port.
     ///
     /// Nothing exports queue depth to Prometheus, so this reads NATS directly.
     pub async fn stream_messages(&self, stream: &str) -> Result<u64> {
@@ -189,7 +195,7 @@ impl Harness {
             .context("the NATS monitoring port did not answer")?
             .json()
             .await
-            .context("NATS sent no JSON")?;
+            .context("NATS sent no JavaScript Object Notation")?;
 
         let count = body
             .get("account_details")

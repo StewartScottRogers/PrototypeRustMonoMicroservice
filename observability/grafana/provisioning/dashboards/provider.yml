@@ -1,4 +1,4 @@
-# Loads any dashboard JSON dropped into observability/grafana/dashboards.
+# Loads any dashboard definition dropped into observability/grafana/dashboards.
 #
 # Dashboards live in version control rather than in Grafana's database, so a
 # change is reviewable in a pull request like anything else - and DevRemove.cmd

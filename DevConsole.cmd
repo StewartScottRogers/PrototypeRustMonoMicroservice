@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem Open the console: every GUI in one page.
+rem Open the console: every graphical interface in one page.
 rem
 rem   DevConsole.cmd
 rem
@@ -62,7 +62,7 @@ echo.
 echo   Press 1-5 in the console to switch tabs.
 echo.
 
-rem `start ""` with an empty title, or cmd treats the URL as the window title.
+rem `start ""` with an empty title, or cmd treats the web address as the window title.
 start "" "http://localhost:%MIMIC_PORT%/"
 
 popd

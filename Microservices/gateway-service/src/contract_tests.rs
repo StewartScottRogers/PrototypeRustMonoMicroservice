@@ -2,7 +2,8 @@
 //!
 //! This service sits on two contracts at once:
 //!
-//! - **HTTP, inbound.** It consumes `POST /order` bodies from clients.
+//! - **Inbound, over Hypertext Transfer Protocol.** It consumes `POST /order`
+//!   bodies from clients.
 //! - **Messaging, outbound.** It writes an `Envelope<OrderCommand>` into the
 //!   outbox, which `outbox-relay` later publishes verbatim.
 //!
@@ -39,7 +40,8 @@ fn the_outbox_payload_round_trips_through_the_contract() {
         },
     );
 
-    let stored = serde_json::to_value(&envelope).expect("the outbox column takes JSON");
+    let stored = serde_json::to_value(&envelope)
+        .expect("the outbox column takes JavaScript Object Notation");
     let decoded: Envelope<OrderCommand> =
         serde_json::from_value(stored).expect("the relay must be able to read this back");
 
@@ -48,7 +50,8 @@ fn the_outbox_payload_round_trips_through_the_contract() {
     assert_eq!(decoded.schema_version, SCHEMA_VERSION);
 }
 
-/// The stored JSON uses the key names every downstream consumer looks for.
+/// The stored JavaScript Object Notation uses the key names every downstream
+/// consumer looks for.
 #[test]
 fn the_stored_command_uses_the_agreed_field_names() {
     let envelope = Envelope::new(
@@ -88,8 +91,9 @@ fn the_envelope_carries_a_trace_field_the_relay_can_restore() {
     );
 
     // With no tracing subscriber installed the map is empty, and an empty map
-    // is skipped in the JSON. What matters for the contract is that the field
-    // exists as a concept and survives a round trip when populated.
+    // is skipped in the JavaScript Object Notation. What matters for the
+    // contract is that the field exists as a concept and survives a round trip
+    // when populated.
     let mut populated = envelope.clone();
     populated.trace.insert(
         "traceparent".to_owned(),
@@ -113,7 +117,7 @@ fn the_outbox_subject_matches_the_shared_constant() {
 }
 
 // ---------------------------------------------------------------------------
-// Consumer side — the HTTP body this service accepts
+// Consumer side — the Hypertext Transfer Protocol body this service accepts
 // ---------------------------------------------------------------------------
 
 #[test]

@@ -38,8 +38,8 @@ static HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
 /// recorder installed are silently discarded — which is safe, and is why unit
 /// tests can call the macros freely without setting anything up.
 ///
-/// Returns quietly if called twice rather than panicking: a duplicate call is a
-/// wiring mistake, not a reason to refuse to start.
+/// Returns quietly if called twice rather than panicking: a duplicate call is
+/// a wiring mistake, not a reason to refuse to start.
 pub fn init_metrics(service: &'static str) {
     if HANDLE.get().is_some() {
         return;
@@ -58,18 +58,19 @@ pub fn init_metrics(service: &'static str) {
 
     // Every service asserts its own identity.
     //
-    // # Why this is not redundant with the scrape config
+    // # Why this is not redundant with the scrape configuration
     //
-    // Prometheus labels a target from whatever DNS told it, and never checks.
-    // Docker recycles container IP addresses: delete a service, and the next
-    // container to start can be handed the address it used to hold. Prometheus
-    // then scrapes that address, gets a perfectly valid response from an
-    // entirely different service, and reports the dead one as healthy.
+    // Prometheus labels a target from whatever name resolution told it, and
+    // never checks. Docker recycles container IP addresses: delete a service,
+    // and the next container to start can be handed the address it used to
+    // hold. Prometheus then scrapes that address, gets a perfectly valid
+    // response from an entirely different service, and reports the dead one as
+    // healthy.
     //
     // That happened here, and it is the worst failure a monitoring system can
     // have - confidently wrong. This metric lets a query confirm that the
     // process answering actually is who the target claims, so identity comes
-    // from the service rather than from a stale DNS cache.
+    // from the service rather than from a stale name resolution cache.
     metrics::gauge!(SERVICE_INFO, "service" => service).set(1.0);
 }
 
@@ -89,14 +90,16 @@ pub fn render() -> String {
 // The metric names, in one place.
 //
 // Constants rather than string literals at each call site, for the same reason
-// the NATS subjects are: a typo produces a second, silently empty metric rather
-// than a compile error, and that is a genuinely miserable thing to debug.
+// the NATS subjects are: a typo produces a second, silently empty metric
+// rather than a compile error, and that is a genuinely miserable thing to
+// debug.
 // ---------------------------------------------------------------------------
 
 /// Always 1, labelled with the name the process believes it has.
 ///
 /// Queried instead of `up` when the question is "is *this service* alive",
-/// because `up` only means "something answered at the address DNS gave me".
+/// because `up` only means "something answered at the address name resolution
+/// gave me".
 pub const SERVICE_INFO: &str = "service_info";
 
 /// Orders accepted by the gateway and written to the outbox.
@@ -123,8 +126,8 @@ mod tests {
 
     #[test]
     fn render_is_empty_before_installation() {
-        // Whether the recorder is installed depends on test ordering, so assert
-        // only what is true either way: rendering never panics.
+        // Whether the recorder is installed depends on test ordering, so
+        // assert only what is true either way: rendering never panics.
         let _ = render();
     }
 

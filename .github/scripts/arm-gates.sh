@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Make CI OK, Image OK and Security OK required to merge into master.
+# Make continuous integration OK, Image OK and Security OK required to merge into master.
 #
 #   .github/scripts/arm-gates.sh
 #
@@ -9,7 +9,7 @@
 #
 # GitHub rejects branch protection on a private repository owned by a personal
 # account on the free plan, for both rulesets and the older branch-protection
-# API. Either make the repository public or move it to a paid plan, then run
+# programming interface. Either make the repository public or move it to a paid plan, then run
 # this. The policy itself is .github/rulesets/master.json, kept in version
 # control so it is reviewable rather than clicked into a settings page.
 
@@ -22,9 +22,10 @@ policy="$here/../rulesets/master.json"
 echo "Applying $policy to $repo"
 
 # The policy file is posted as-is. It deliberately carries no comment field:
-# JSON has no comments, the API rejects unknown top-level keys, and stripping
-# one would mean depending on jq - which is not installed everywhere this needs
-# to run. The explanation lives in this script instead.
+# JavaScript Object Notation has no comments, the programming interface rejects
+# unknown top-level keys, and stripping one would mean depending on jq - which
+# is not installed everywhere this needs to run. The explanation lives in this
+# script instead.
 #
 # A file path rather than `-`: `gh api --input -` does not reliably read piped
 # stdin under Git Bash on Windows, and fails with "data cannot be null".

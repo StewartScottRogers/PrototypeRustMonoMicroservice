@@ -6,15 +6,15 @@
 //! - **Provides** `/api/state` to its own console page. The page switches on
 //!   these strings to colour lamps, so a rename here silently leaves every
 //!   lamp grey — a monitoring tool that looks fine and reports nothing.
-//! - **Consumes** Prometheus and NATS monitoring JSON, neither of which this
-//!   repo controls. Tolerance matters more than usual: an upstream version
-//!   bump can add fields at any time.
+//! - **Consumes** the monitoring output of Prometheus and NATS, neither of
+//!   which this repository controls. Tolerance matters more than usual: an
+//!   upstream version can add fields at any time.
 
 use crate::collect::{Alarm, Gauge, Node, Snapshot, Status};
 use chrono::Utc;
 
 // ---------------------------------------------------------------------------
-// Provider side — the JSON the console page consumes
+// Provider side — the JavaScript Object Notation the console page consumes
 // ---------------------------------------------------------------------------
 
 /// The status strings are the contract with the page.
@@ -70,13 +70,13 @@ fn a_snapshot_serialises_to_the_shape_the_page_expects() {
     assert!(json.get("generated_at").is_some());
     assert!(json.get("sources_ok").is_some());
 
-    // A node: the page finds `led-<id>` and `txt-<id>` in the SVG from `id`.
+    // A node: the page finds `led-<id>` and `txt-<id>` in the drawing from `id`.
     let node = &json["nodes"][0];
     assert_eq!(node["id"], "worker");
     assert_eq!(node["status"], "degraded");
     assert!(node.get("detail").is_some());
 
-    // A gauge: `id` matches an SVG text element, `warn` picks its colour.
+    // A gauge: `id` matches a text element in the drawing, `warn` picks its colour.
     let gauge = &json["gauges"][0];
     assert_eq!(gauge["id"], "g-queue");
     assert!(gauge.get("value").is_some());
@@ -114,7 +114,7 @@ fn an_all_clear_snapshot_still_carries_every_array() {
 }
 
 // ---------------------------------------------------------------------------
-// Consumer side — upstream JSON this service reads
+// Consumer side — upstream JavaScript Object Notation this service reads
 // ---------------------------------------------------------------------------
 
 /// A Prometheus instant-query response in its documented shape.

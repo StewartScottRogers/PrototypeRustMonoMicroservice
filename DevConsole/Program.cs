@@ -179,7 +179,8 @@ internal static class Program
     private static int Run(string scriptPath, string workingDirectory, string[] forwarded)
     {
         // COMSPEC is where Windows records the command interpreter. Falling back
-        // to a bare "cmd.exe" lets PATH resolve it if the variable is unset.
+        // to a bare "cmd.exe" lets the executable search path (`PATH`) resolve
+        // it if the variable is unset.
         var comSpec = Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe";
 
         var startInfo = new ProcessStartInfo

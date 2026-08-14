@@ -44,8 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # push the image and its attestation to GHCR
-      id-token: write # OIDC token proving which workflow built it
+      packages: write # push the image and its attestation to the registry
+      id-token: write # OpenID Connect token proving which workflow built it
       attestations: write # write to GitHub's attestation store
     strategy:
       fail-fast: false
@@ -60,8 +60,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
-      # GHCR rejects any uppercase character in a repository name, and this
-      # org/repo has several. Never interpolate github.repository directly.
+      # the GitHub Container Registry rejects any uppercase character in a repository name, and this
+      # org/repository has several. Never interpolate github.repository directly.
       - name: Compute image name
         id: name
         env:
@@ -70,7 +70,7 @@ jobs:
           owner_repo="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
           echo "image=ghcr.io/${owner_repo}/${SERVICE}" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GHCR
+      - name: Log in to the GitHub Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
@@ -96,7 +96,7 @@ jobs:
         with:
           context: .
           build-args: SERVICE=${{ matrix.service }}
-          # A PR builds to prove the Dockerfile still works; it must not publish.
+          # A pull request builds to prove the Dockerfile still works; it must not publish.
           push: ${{ github.event_name != 'pull_request' }}
           # Also leave the image in the local daemon so the scan below has
           # something to read on pull requests, where nothing is pushed.
@@ -109,7 +109,7 @@ jobs:
 
       # Catches CVEs in the base image, which cargo-deny cannot see: it audits
       # crates, not the Debian packages underneath them. Scanning the locally
-      # loaded image means a PR is blocked before the image is ever published.
+      # loaded image means a pull request is blocked before the image is ever published.
       #
       # ignore-unfixed because an advisory with no available patch is not
       # actionable here - it would turn the gate into noise that gets ignored.
@@ -122,12 +122,12 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
 
-      # Signs "this digest came from this workflow, repo, and commit", and
+      # Signs "this digest came from this workflow, repository, and commit", and
       # stores it next to the image. Verify with:
-      #   gh attestation verify oci://<image>:<tag> --repo <owner>/<repo>
+      #   gh attestation verify oci://<image>:<tag> --repository <owner>/<repository>
       # GitHub refuses to persist attestations for user-owned private repos:
       # "Feature not available for user-owned private repositories." Making the
-      # repo public, or moving it to an org on Team/Enterprise, turns this on
+      # repository public, or moving it to an org on Team/Enterprise, turns this on
       # with no further change here.
       - name: Attest build provenance
         if: github.event_name != 'pull_request' && github.event.repository.visibility == 'public'
@@ -137,7 +137,7 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
-  # Single required status check for this workflow, same reasoning as CI OK.
+  # Single required status check for this workflow, same reasoning as continuous integration OK.
   image-ok:
     name: Image OK
     if: always()

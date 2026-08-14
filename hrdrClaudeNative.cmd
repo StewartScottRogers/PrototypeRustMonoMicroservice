@@ -5,7 +5,7 @@ REM ============================================================
 REM  herdr + Claude (native)  --  terminal+agent pair
 REM  ------------------------------------------------------------
 REM  Launches Claude Code as a tracked, named agent inside the
-REM  herdr multiplexer, via this repo's RunClaude.cmd launcher.
+REM  herdr multiplexer, via this repository's RunClaude.cmd launcher.
 REM  Claude appears as a named pane in herdr's sidebar; its
 REM  idle/working/blocked state comes from herdr's native Claude
 REM  integration hook, which is installed here if it is missing
@@ -16,7 +16,7 @@ REM  known install dir, and if no herdr server is running it starts
 REM  one, waits for it to become ready, then creates the tab and
 REM  attaches this console to the herd.
 REM
-REM  Topology: a tab in the workspace labelled after this repo,
+REM  Topology: a tab in the workspace labelled after this repository,
 REM  creating that workspace on first run. Repeat launches add
 REM  further tabs named claude, claude-2, claude-3, ...
 REM
@@ -28,8 +28,8 @@ REM ============================================================
 if not defined CLAUDE_MODEL set "CLAUDE_MODEL=claude-opus-5"
 set "STARTED_HERDR="
 
-REM  Use this repo's RunClaude.cmd as the in-pane command so the
-REM  Claude Code launch (flags, model, cwd) stays in one place.
+REM  Use this repository's RunClaude.cmd as the in-pane command so the
+REM  Claude Code launch (flags, model, working directory) stays in one place.
 set "CLAUDE_CMD=%~dp0RunClaude.cmd"
 for %%I in ("%CLAUDE_CMD%") do set "CLAUDE_CMD=%%~fI"
 if not exist "%CLAUDE_CMD%" (
@@ -41,7 +41,7 @@ if not exist "%CLAUDE_CMD%" (
     exit /b 1
 )
 
-REM  Repo dir, without the trailing backslash so it survives argument
+REM  Repository directory, without the trailing backslash so it survives argument
 REM  quoting when passed to herdr, plus its leaf name for the workspace label.
 set "REPO_DIR=%~dp0"
 if "%REPO_DIR:~-1%"=="\" set "REPO_DIR=%REPO_DIR:~0,-1%"
@@ -113,9 +113,9 @@ if not errorlevel 1 (
     goto :namecheck
 )
 
-REM  Create the pane that will host Claude: a tab in this repo's workspace,
+REM  Create the pane that will host Claude: a tab in this repository's workspace,
 REM  creating that workspace if this is the first launch here. herdr replies
-REM  with JSON, so PowerShell does the lookup and pulls out the new IDs.
+REM  with JavaScript Object Notation, so PowerShell does the lookup and pulls out the new IDs.
 REM  HERDR / REPO_DIR / WS_LABEL are read from the environment to keep the
 REM  embedded command free of nested quoting.
 echo Opening a herdr pane for !AGENT_NAME! in %WS_LABEL%...
@@ -136,7 +136,7 @@ if not defined PANE_ID (
 
 REM  Start Claude in that pane. 'pane run' sends the command line plus Enter to
 REM  the pane's shell; wrapping in cmd /c keeps it shell-agnostic (herdr panes
-REM  may run PowerShell) and tolerant of spaces in the repo path. CLAUDE_MODEL
+REM  may run PowerShell) and tolerant of spaces in the repository path. CLAUDE_MODEL
 REM  reaches Claude through RunClaude.cmd, which turns it into --model.
 "%HERDR%" pane run "!PANE_ID!" "cmd /c ""%CLAUDE_CMD%""" >nul
 if errorlevel 1 (

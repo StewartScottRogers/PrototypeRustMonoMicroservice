@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Print a JSON array of the workspace crates a diff touches, including every
-# crate that depends on them. Feeds the CI test matrix.
+# Print a JavaScript Object Notation array of the workspace crates a diff touches, including every
+# crate that depends on them. Feeds the continuous integration test matrix.
 #
 #   .github/scripts/affected-crates.sh <base-sha>
 #
@@ -17,13 +17,13 @@ everything="$(jq -c '[.packages[].name] | sort' <<<"$meta")"
 changed="$(git diff --name-only "$base" HEAD)"
 
 # A change to a shared build input invalidates the whole workspace, so do not
-# pretend otherwise — that is how a monorepo ships a break that CI called green.
+# pretend otherwise — that is how a monorepo ships a break that continuous integration called green.
 if grep -qE '^(Cargo\.(toml|lock)|rust-toolchain\.toml|clippy\.toml|deny\.toml|\.config/|\.github/)' <<<"$changed"; then
     echo "$everything"
     exit 0
 fi
 
-# Map each workspace member's directory (repo-relative) to its crate name.
+# Map each workspace member's directory (repository-relative) to its crate name.
 declare -A name_of_dir
 declare -A is_member
 while IFS=$'\t' read -r name dir; do
@@ -61,7 +61,7 @@ done
 # The `+x` test must come first. Under `set -u`, expanding ${#affected[@]} on an
 # associative array that was declared but never assigned is an "unbound
 # variable" error, not a zero - so the length check cannot be the first thing
-# that touches the array. This is the docs-only-change path: a PR that edits no
+# that touches the array. This is the documentation-only-change path: a pull request that edits no
 # crate produces an empty set and an empty matrix.
 if [ -z "${affected[*]+x}" ]; then
     echo '[]'

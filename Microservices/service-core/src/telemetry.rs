@@ -1,6 +1,7 @@
 //! Process-wide tracing setup: structured logs, plus spans exported to Jaeger.
 //!
-//! "Tracing" here means two things at once, and they share one API:
+//! "Tracing" here means two things at once, and they share one programming
+//! interface:
 //!
 //! - **Structured logs** — each record is a set of named fields, not a
 //!   sentence, so a log system can index and query them.
@@ -28,8 +29,8 @@ pub fn init_tracing(service: &'static str) {
 
     let json_layer = fmt::layer().json().flatten_event(true);
 
-    // `Option<Layer>` is itself a valid layer: `None` contributes nothing. That
-    // is how the same registry works both with and without a collector,
+    // `Option<Layer>` is itself a valid layer: `None` contributes nothing.
+    // That is how the same registry works both with and without a collector,
     // without duplicating the whole builder chain.
     let otel_layer = otel_layer(service);
 
@@ -51,9 +52,10 @@ where
 {
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok()?;
 
-    // The propagator decides the wire format for "which trace is this part of".
-    // W3C traceparent is the standard one, and it is what messaging-core writes
-    // into NATS headers so a trace survives the hop through the broker.
+    // The propagator decides the wire format for "which trace is this part
+    // of". World Wide Web Consortium traceparent is the standard one, and it
+    // is what messaging-core writes into NATS headers so a trace survives the
+    // hop through the broker.
     opentelemetry::global::set_text_map_propagator(
         opentelemetry_sdk::propagation::TraceContextPropagator::new(),
     );

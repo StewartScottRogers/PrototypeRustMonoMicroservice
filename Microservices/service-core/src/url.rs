@@ -6,17 +6,18 @@
 //! workspace switched off to keep container builds small. Anything assembling
 //! a query string therefore has to encode it itself — and PromQL, the main
 //! thing we put in one, is full of characters that must not travel raw in a
-//! URL: `{}`, `()`, `"`, spaces, `=`.
+//! web address: `{}`, `()`, `"`, spaces, `=`.
 //!
 //! It lives in `service-core` because two callers already need it. Per the
-//! Team SOP this is platform surface, owned by the Orchestration Agent.
+//! Team standard operating procedure this is platform surface, owned by the
+//! Orchestration Agent.
 
-/// Percent-encodes a string for use as a URL query value.
+/// Percent-encodes a string for use as a web address query value.
 ///
-/// Only the RFC 3986 *unreserved* set passes through untouched; everything
-/// else becomes `%XX`. Always safe, occasionally more verbose than necessary —
-/// the right trade for something whose failure mode is a silently truncated
-/// query.
+/// Only the Request for Comments 3986 *unreserved* set passes through
+/// untouched; everything else becomes `%XX`. Always safe, occasionally more
+/// verbose than necessary — the right trade for something whose failure mode
+/// is a silently truncated query.
 ///
 /// # Rust concepts here
 ///
@@ -54,7 +55,8 @@ mod tests {
     #[test]
     fn promql_survives_a_round_trip_into_a_url() {
         // The exact characters that appear in the queries this workspace runs,
-        // and that would otherwise break the URL or truncate the expression.
+        // and that would otherwise break the web address or truncate the
+        // expression.
         assert_eq!(
             percent_encode("count(up{service=\"worker\"} == 1)"),
             "count%28up%7Bservice%3D%22worker%22%7D%20%3D%3D%201%29"

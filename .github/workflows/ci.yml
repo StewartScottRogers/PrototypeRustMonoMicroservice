@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   # Required: without merge_group the checks never report inside the merge
-  # queue and every queued PR times out.
+  # queue and every queued pull request times out.
   merge_group:
   push:
     branches: [master]
@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  # Never cancel a merge-queue or master run — only superseded PR pushes.
+  # Never cancel a merge-queue or master run — only superseded pull request pushes.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0 # affected-crates.sh diffs against the base commit
-          # checkout writes the job token into .git/config by default, where
+          # checkout writes the job token into .git/configuration by default, where
           # anything that uploads the workspace would leak it. Nothing here
           # pushes with git, so it is never needed.
           persist-credentials: false
@@ -129,7 +129,7 @@ jobs:
         # a broker and a database. The `integration` job covers exactly those.
         #
         # This is a floor to stop regressions, not a target. Raise it as unit
-        # tests grow; lowering it again needs a reason in the PR body.
+        # tests grow; lowering it again needs a reason in the pull request body.
         run: |
           cargo llvm-cov nextest \
             --workspace --all-features --no-tests=pass \

@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   # CodeQL needs GitHub Advanced Security, which is not available on
-  # user-owned private repositories. Gated rather than deleted: make the repo
+  # user-owned private repositories. Gated rather than deleted: make the repository
   # public, or move it to an org on Team/Enterprise, and this starts running
   # with no edit here. Same pattern as the attestation step in image.yml.
   codeql:
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write # upload findings to the code scanning API
+      security-events: write # upload findings to the code scanning service
       actions: read
     strategy:
       fail-fast: false
@@ -68,7 +68,7 @@ jobs:
 
       # zizmor audits the workflows themselves: unpinned actions, injectable
       # ${{ }} interpolation inside run blocks, over-broad permissions,
-      # dangerous checkout of PR head. Run through pipx at a pinned version
+      # dangerous checkout of pull request head. Run through pipx at a pinned version
       # rather than as an action - one less third-party action to trust.
       - name: Audit workflows with zizmor
         run: pipx run zizmor==1.29.0 --no-progress .github/workflows .github/actions
@@ -83,10 +83,10 @@ jobs:
           # leaked secret, and is invisible to a shallow checkout.
           fetch-depth: 0
           # Especially here: this job scans the checkout for secrets, and the
-          # token checkout leaves in .git/config is exactly such a secret.
+          # token checkout leaves in .git/configuration is exactly such a secret.
           persist-credentials: false
 
-      # GitHub's own secret scanning needs Advanced Security on a private repo.
+      # GitHub's own secret scanning needs Advanced Security on a private repository.
       # gitleaks is the part that works regardless. Installed from a pinned
       # release rather than via its action, which needs a licence key for
       # organisation-owned repositories.
@@ -106,7 +106,7 @@ jobs:
       - name: Scan the commit history
         run: ./gitleaks git . --redact --no-banner
 
-  # Single required status check for this workflow, same reasoning as CI OK.
+  # Single required status check for this workflow, same reasoning as continuous integration OK.
   security-ok:
     name: Security OK
     if: always()

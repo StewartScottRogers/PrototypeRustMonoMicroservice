@@ -66,7 +66,7 @@ fn the_completion_event_round_trips_through_the_contract() {
 ///
 /// The round-trip test above would still pass if *both* sides were renamed
 /// together — which would silently break every other service. This asserts the
-/// actual JSON keys a consumer will look for.
+/// actual JavaScript Object Notation keys a consumer will look for.
 #[test]
 fn the_completion_event_uses_the_field_names_subscribers_expect() {
     let envelope = Envelope::new(
@@ -122,7 +122,8 @@ fn a_dead_letter_is_still_a_command_envelope() {
     assert_eq!(decoded.data, command);
 }
 
-/// The subjects this service publishes to are the ones its neighbours listen on.
+/// The subjects this service publishes to are the ones its neighbours listen
+/// on.
 #[test]
 fn the_published_subjects_match_the_shared_constants() {
     assert_eq!(subjects::ORDER_EVENT_COMPLETED, "orders.event.completed");
@@ -140,7 +141,8 @@ fn the_published_subjects_match_the_shared_constants() {
 ///
 /// Written as a literal rather than built with `Envelope::new`, on purpose: a
 /// fixture constructed from our own types would still pass if the type drifted
-/// away from the contract. Raw JSON is the neighbour's voice, not ours.
+/// away from the contract. Raw JavaScript Object Notation is the neighbour's
+/// voice, not ours.
 const COMMAND_FIXTURE: &str = r#"{
     "id": "6f1a9d5e-2b7c-4e1f-9a3d-8c5b0e7f2a41",
     "kind": "order.created",
@@ -217,8 +219,8 @@ fn a_message_without_a_schema_version_is_read_as_version_one() {
 fn a_future_schema_version_is_flagged_unsupported() {
     let newer = COMMAND_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 99");
 
-    let envelope: Envelope<OrderCommand> =
-        serde_json::from_str(&newer).expect("it must still decode so we can route it to the DLQ");
+    let envelope: Envelope<OrderCommand> = serde_json::from_str(&newer)
+        .expect("it must still decode so we can route it to the dead-letter queue");
 
     assert!(
         !envelope.is_supported(),

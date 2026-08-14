@@ -1,7 +1,7 @@
 @echo off
 rem ---------------------------------------------------------------------------
 rem Remove everything this stack created: containers, the network, the images
-rem built from this repo, and the Postgres and Redis volumes.
+rem built from this repository, and the Postgres and Redis volumes.
 rem
 rem THIS DELETES DATA. Any rows in the dev database are gone afterwards.
 rem

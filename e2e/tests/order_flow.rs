@@ -1,7 +1,7 @@
 //! End-to-end: one order through every service.
 //!
 //! ```text
-//! POST /order → gateway → outbox (Postgres, one txn)
+//! POST /order → gateway → outbox (Postgres, one transaction)
 //!                            ↓ relay
 //!                        NATS ORDER_COMMANDS → worker
 //!                            ↓ publishes
@@ -41,8 +41,8 @@ use messaging_core::{Envelope, OrderCommand};
 /// reacted.
 async fn audit_rows(pool: &sqlx::PgPool, order_id: uuid::Uuid) -> Result<i64> {
     // `query_scalar` returns the single column of the single row. The `$1`
-    // placeholder keeps the value out of the SQL string, so an id can never be
-    // interpreted as SQL.
+    // placeholder keeps the value out of the Structured Query Language string,
+    // so an id can never be interpreted as Structured Query Language.
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM audit_log WHERE order_id = $1")
         .bind(order_id)
         .fetch_one(pool)
@@ -140,8 +140,8 @@ async fn both_subscribers_react_to_one_event() -> Result<()> {
                 .await?
                 .unwrap_or(0.0);
 
-            // Both must advance. If only one moves they are sharing a consumer,
-            // which would be messaging rather than eventing.
+            // Both must advance. If only one moves they are sharing a
+            // consumer, which would be messaging rather than eventing.
             Ok(notifier > before_notifier && audit > before_audit)
         },
     )
@@ -252,8 +252,9 @@ async fn the_stored_outbox_payload_matches_the_shared_contract() -> Result<()> {
     .fetch_one(&pool)
     .await?;
 
-    // The real assertion: the stored JSON deserialises into the shared type.
-    // Turbofish because the target type cannot be inferred from the JSON.
+    // The real assertion: the stored JavaScript Object Notation deserialises
+    // into the shared type. Turbofish because the target type cannot be
+    // inferred from the JavaScript Object Notation.
     let envelope = serde_json::from_value::<Envelope<OrderCommand>>(payload)
         .context("the stored outbox payload no longer matches messaging-core")?;
 

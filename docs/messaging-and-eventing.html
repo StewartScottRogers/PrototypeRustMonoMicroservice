@@ -338,8 +338,8 @@
       <h1>The Dispatch Office</h1>
       <p class="standfirst">
         Messaging and eventing are not the same thing. This build makes the
-        difference visible on one broker, with one API, and one line of
-        configuration between them.
+        difference visible on one broker, with one programming interface, and
+        one line of configuration between them.
       </p>
     </div>
   </header>
@@ -493,7 +493,7 @@
 
         <path class="svg-dead" d="M470 68 V120 H548"/>
         <text class="svg-t-s" x="440" y="112">3 FAILS</text>
-        <text class="svg-t-s" x="440" y="126">&#8594; DLQ</text>
+        <text class="svg-t-s" x="440" y="126">&#8594; dead letters</text>
       </svg>
     </div>
   </section>
@@ -598,9 +598,10 @@ carried through NATS, gives it back.</span></pre>
         <h3>Distributed tracing</h3>
         <p class="kicker">Give back what decoupling takes away</p>
         <p>
-          The W3C <code>traceparent</code> rides in NATS headers, so one trace
-          covers the HTTP request, the broker hop and every subscriber. Without
-          it each service produces its own disconnected trace and the one
+          The World Wide Web Consortium <code>traceparent</code> rides in NATS
+          headers, so one trace covers the incoming request, the broker hop and
+          every subscriber. Without it each service produces its own
+          disconnected trace and the one
           question worth asking — what did this request cause? — has no answer.
         </p>
       </div>
@@ -631,12 +632,12 @@ carried through NATS, gives it back.</span></pre>
 <b>DevRemove.cmd</b>  <span class="cmt">remove everything, volumes included</span></div>
     <div class="tablewrap">
       <table>
-        <caption>What CI checks on every pull request</caption>
+        <caption>What continuous integration checks on every pull request</caption>
         <thead><tr><th>Gate</th><th>Covers</th></tr></thead>
         <tbody>
           <tr><td><code>CI OK</code></td><td>fmt, clippy, per-crate tests, coverage, cargo-deny, and a full compose-stack smoke test</td></tr>
-          <tr><td><code>Image OK</code></td><td>five images built, scanned for CVEs, pushed to GHCR</td></tr>
-          <tr><td><code>Security OK</code></td><td>workflow audit, secret scan, CodeQL when the repo is public</td></tr>
+          <tr><td><code>Image OK</code></td><td>five images built, scanned for known vulnerabilities, pushed to the registry</td></tr>
+          <tr><td><code>Security OK</code></td><td>workflow audit, secret scan, CodeQL when the repository is public</td></tr>
         </tbody>
       </table>
     </div>
@@ -653,9 +654,10 @@ carried through NATS, gives it back.</span></pre>
         <p class="kicker">Was: the chain broke where it became durable</p>
         <p>
           The trace context now travels <em>inside</em> the envelope, and the
-          envelope is already stored as JSON in the outbox row — so the context
-          is still there minutes later when the relay picks it up. One field,
-          no new column. A trace now starts at the HTTP request:
+          envelope is already stored as JavaScript Object Notation in the
+          outbox row — so the context is still there minutes later when the
+          relay picks it up. One field,
+          no new column. A trace now starts at the incoming request:
         </p>
         <p><code>gateway accept &rarr; outbox-relay &rarr; worker &rarr; subscribers</code></p>
       </div>
@@ -663,7 +665,7 @@ carried through NATS, gives it back.</span></pre>
         <h3>The relay is its own process</h3>
         <p class="kicker">Was: a background task inside the gateway</p>
         <p>
-          Running a second gateway for HTTP throughput used to start a second
+          Running a second gateway for request throughput used to start a second
           relay whether you wanted one or not. Separated, each scales for its
           own reason — and more than one copy was always safe, because
           <code>FOR UPDATE SKIP LOCKED</code> makes them claim different rows.
@@ -705,7 +707,7 @@ carried through NATS, gives it back.</span></pre>
       <p>
         This is not an oversight and not a permissions problem. GitHub refuses
         branch protection on a private repository owned by a personal account on
-        the free plan, through both the rulesets API and the older one:
+        the free plan, through both the rulesets programming interface and the older one:
       </p>
       <p><code>Upgrade to GitHub Pro or make this repository public</code></p>
       <p>

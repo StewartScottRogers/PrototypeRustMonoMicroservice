@@ -3,17 +3,18 @@
 //! # Why this is not optional
 //!
 //! JetStream guarantees *at-least-once* delivery. If a worker processes a
-//! message and dies before acknowledging it, the broker redelivers — correctly,
-//! because from its side the work might never have happened. Duplicates are
-//! therefore normal operation, not a bug to be fixed in the broker.
+//! message and dies before acknowledging it, the broker redelivers —
+//! correctly, because from its side the work might never have happened.
+//! Duplicates are therefore normal operation, not a bug to be fixed in the
+//! broker.
 //!
 //! The consumer has to be the one that copes. Either its work is naturally
 //! repeatable, or it remembers what it has already done. This is the
 //! remembering.
 //!
-//! Redis is the right shape for that memory: the check and the record must be a
-//! single atomic step, which `SET NX` gives, and entries should expire on their
-//! own rather than growing forever, which `EX` gives.
+//! Redis is the right shape for that memory: the check and the record must be
+//! a single atomic step, which `SET NX` gives, and entries should expire on
+//! their own rather than growing forever, which `EX` gives.
 
 use anyhow::{Context as _, Result};
 use std::time::Duration;
@@ -39,8 +40,8 @@ pub struct IdempotencyGuard {
 impl IdempotencyGuard {
     /// Connects to Redis, e.g. `redis://redis:6379`.
     pub async fn connect(url: &str, namespace: &'static str) -> Result<Self> {
-        let client =
-            redis::Client::open(url).with_context(|| format!("{url} is not a valid Redis URL"))?;
+        let client = redis::Client::open(url)
+            .with_context(|| format!("{url} is not a valid Redis address"))?;
 
         let connection = client
             .get_multiplexed_async_connection()
@@ -53,7 +54,8 @@ impl IdempotencyGuard {
         })
     }
 
-    /// Returns `true` the first time it sees `id`, and `false` on every repeat.
+    /// Returns `true` the first time it sees `id`, and `false` on every
+    /// repeat.
     ///
     /// `SET key value NX EX seconds` is one round trip that both tests and
     /// records. Checking with `EXISTS` and then writing would leave a gap in

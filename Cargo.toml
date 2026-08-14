@@ -1,6 +1,6 @@
 # Virtual workspace manifest. It defines no crate of its own — every crate lives
-# under Microservices/, per CLAUDE.md. Keeping the manifest at the repo root is
-# what lets `cargo` and the CI workflow run without a working-directory dance.
+# under Microservices/, per CLAUDE.md. Keeping the manifest at the repository root is
+# what lets `cargo` and the continuous integration workflow run without a working-directory dance.
 [workspace]
 resolver = "3"
 # The glob covers every service crate. `e2e` is listed separately because it is
@@ -31,9 +31,9 @@ async-nats = "0.50"
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
-# HTTP *client*, used by gateway-service to call echo-service. TLS is switched
+# Hypertext Transfer Protocol *client*, used by gateway-service to call echo-service. TLS is switched
 # off (`default-features = false`): traffic between containers on the compose
-# network is plain HTTP, and the default TLS stack is a large dependency to
+# network is plain Hypertext Transfer Protocol, and the default TLS stack is a large dependency to
 # compile for nothing.
 redis = { version = "1", default-features = false, features = ["tokio-comp"] }
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
