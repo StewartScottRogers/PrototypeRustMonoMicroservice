@@ -3,35 +3,40 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mimic Panel — Order Platform</title>
+<title>Live Mimic — Order Platform</title>
 <style>
   /* A control room commits to one visual world, so every colour is painted
-     explicitly rather than inherited. */
+     explicitly rather than inherited from whatever is framing the page. */
   :root {
     --void:#05080b; --ground:#080d12; --panel:#0d151c; --panel-2:#101a22;
-    --edge:#263945; --edge-hi:#3a5464;
-    --ink:#c7d8e4; --dim:#6d8496; --far:#4a5f6e;
+    --edge:#22333e; --edge-hi:#334c5c;
+    --ink:#c7d8e4; --dim:#6d8496; --far:#42555f;
     --ok:#2fd98a; --warn:#ffb020; --fail:#ff4a4a; --unknown:#5a6b78;
     --sync:#34c3e0; --async:#b07cff;
     --mono:"Cascadia Mono",Consolas,"SF Mono",Menlo,"DejaVu Sans Mono",monospace;
   }
   *{box-sizing:border-box}
-  body{background:var(--void);color:var(--ink);font-family:var(--mono);margin:0;padding:1.5rem 1rem 3rem;-webkit-font-smoothing:antialiased}
-  .shell{max-width:88rem;margin:0 auto}
+  body{background:var(--void);color:var(--ink);font-family:var(--mono);margin:0;
+       padding:1.25rem 1rem 2.5rem;-webkit-font-smoothing:antialiased}
+  .shell{max-width:96rem;margin:0 auto}
   .strip{display:flex;flex-wrap:wrap;gap:.4rem 1.5rem;justify-content:space-between;align-items:baseline;
-         padding:.4rem .5rem .8rem;font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--far)}
+         padding:.3rem .4rem .7rem;font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--far)}
   .strip b{color:var(--dim);font-weight:500}
-  #conn{color:var(--ok)}
-  #conn.stale{color:var(--warn)}
-  .bezel{background:var(--ground);border:1px solid var(--edge);box-shadow:0 0 0 1px #000 inset,0 24px 60px -30px #000;padding:.6rem}
+  #connection{color:var(--ok)}
+  #connection.stale{color:var(--warn)}
+  .bezel{background:var(--ground);border:1px solid var(--edge);
+         box-shadow:0 0 0 1px #000 inset,0 24px 60px -30px #000;padding:.5rem}
   .scroller{overflow-x:auto}
-  svg{display:block;width:100%;min-width:64rem;height:auto}
+  svg{display:block;width:100%;min-width:72rem;height:auto}
   figure{margin:0}
-  figcaption{margin:1rem auto 0;max-width:58rem;font-size:.78rem;line-height:1.7;color:var(--dim);text-align:center;text-wrap:pretty}
+  figcaption{margin:.9rem auto 0;max-width:60rem;font-size:.78rem;line-height:1.7;
+             color:var(--dim);text-align:center;text-wrap:pretty}
   figcaption b{color:var(--ink);font-weight:500}
   @media (prefers-reduced-motion:no-preference){
-    .pulse{animation:blink 1.4s steps(1,end) infinite}
-    @keyframes blink{50%{opacity:.25}}
+    /* A one-second heartbeat on the live indicator, matching the poll, so a
+       frozen panel is obvious without reading the timestamp. */
+    #beat{animation:beat 1s steps(1,end) infinite}
+    @keyframes beat{50%{opacity:.2}}
   }
 </style>
 </head>
@@ -39,279 +44,334 @@
 <div class="shell">
   <div class="strip">
     <span>Order Platform &middot; <b>Live Mimic</b></span>
-    <span>Updated <b id="stamp">—</b> &middot; <span id="conn">POLLING</span></span>
+    <span>Updated <b id="stamp">&mdash;</b> &middot; <span id="connection"><span id="beat">&#9679;</span> LIVE</span></span>
   </div>
 
   <div class="bezel">
     <div class="scroller">
       <figure>
-        <svg viewBox="0 0 1500 940" role="img"
-             aria-label="Live mimic of the order platform: clients reach the gateway, which calls echo-service synchronously and writes an order plus an outbox row to Postgres in one transaction. The outbox relay publishes to NATS JetStream, whose command stream feeds the worker replicas and whose event stream feeds the notifier and audit services. Redis holds idempotency keys. Prometheus, Grafana and Jaeger sit on an observability bus along the bottom. Status lamps and gauges update every few seconds from live data.">
+        <svg viewBox="0 0 1500 812" role="img"
+             aria-label="Live mimic of the order platform, read left to right and then top to bottom. Band one: clients post an order to the gateway service, which writes the order and an outbox row to PostgreSQL in one transaction, and the outbox relay polls that table. The gateway also calls the echo service synchronously as a simple example. Band two: the relay publishes to the command stream on the NATS JetStream broker, one worker replica takes each command, and the worker publishes to the event stream, which every subscriber reads a copy of, so both the notifier and the audit service react. Redis holds idempotency keys and repeatedly failing messages are parked on the dead-letter stream. Band three: Prometheus, Grafana and Jaeger receive telemetry from every service. An instrument column on the right shows live rates and depths.">
           <defs>
-            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M40 0 H0 V40" fill="none" stroke="#101c25" stroke-width="1"/>
-            </pattern>
-            <marker id="s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <marker id="arrow-sync" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" fill="#34c3e0"/></marker>
-            <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <marker id="arrow-async" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" fill="#b07cff"/></marker>
-            <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M0 0 L10 5 L0 10 z" fill="#6d8496"/></marker>
+            <marker id="arrow-quiet" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="#5c7382"/></marker>
           </defs>
 
-          <rect width="1500" height="940" fill="#080d12"/>
-          <rect width="1500" height="940" fill="url(#grid)"/>
+          <style>
+            .box      { fill:#0d151c; stroke:#334c5c; stroke-width:1.4; }
+            .box-soft { fill:#0a1118; stroke:#22333e; stroke-width:1.2; }
+            .box-tag  { fill:#0a1118; stroke:#334c5c; stroke-width:1.2; stroke-dasharray:3 3; }
+            .tile     { fill:#0d151c; stroke:#22333e; stroke-width:1.2; }
+            .name     { font-family:inherit; font-size:14px; fill:#c7d8e4; letter-spacing:.04em; }
+            .sub      { font-family:inherit; font-size:10.5px; fill:#6d8496; }
+            .detail   { font-family:inherit; font-size:10.5px; fill:#6d8496; }
+            .band     { font-family:inherit; font-size:11px; fill:#6d8496; letter-spacing:.2em; }
+            .band-n   { font-family:inherit; font-size:11px; fill:#34c3e0; letter-spacing:.2em; }
+            .edge-lbl { font-family:inherit; font-size:10px; fill:#5c7382; letter-spacing:.02em; }
+            .line-sync  { stroke:#34c3e0; stroke-width:1.6; fill:none; }
+            .line-async { stroke:#b07cff; stroke-width:1.6; fill:none; stroke-dasharray:7 5; }
+            .line-quiet { stroke:#5c7382; stroke-width:1.2; fill:none; stroke-dasharray:2 4; }
+            .rule     { stroke:#1a2831; stroke-width:1; }
+            .tag-txt  { font-family:inherit; font-size:12px; fill:#34c3e0; letter-spacing:.1em; }
+            .read-lbl { font-family:inherit; font-size:10.5px; fill:#6d8496; letter-spacing:.08em; }
+            .read-val { font-family:inherit; font-size:23px; fill:#34c3e0; }
+            .read-unt { font-family:inherit; font-size:10px; fill:#42555f; }
+          </style>
 
-          <!-- ALARM BANNER -->
-          <rect id="alarm-box" x="24" y="18" width="1452" height="50" fill="#0f1a14" stroke="#2fd98a" stroke-width="1.5"/>
-          <circle id="alarm-led" class="pulse" cx="50" cy="43" r="7" fill="#2fd98a"/>
-          <text id="alarm-title" x="74" y="48" font-size="15" fill="#2fd98a" letter-spacing="1.4">ALL CLEAR</text>
-          <line x1="196" y1="30" x2="196" y2="56" stroke="#263945"/>
-          <text id="alarm-text" x="214" y="48" font-size="15" fill="#c7d8e4">no active alarms</text>
-          <text id="alarm-count" x="1450" y="48" font-size="13" fill="#6d8496" text-anchor="end">0 ACTIVE</text>
+          <!-- ============ ALARM BANNER ============ -->
+          <rect id="alarm-box" x="40" y="20" width="1420" height="52" rx="2"
+                fill="#0f1a14" stroke="#2fd98a" stroke-width="1.4"/>
+          <circle id="alarm-led" cx="70" cy="46" r="7" fill="#2fd98a"/>
+          <text id="alarm-title" x="96" y="51" font-size="12" fill="#2fd98a" letter-spacing="2.4">ALL CLEAR</text>
+          <line x1="212" y1="30" x2="212" y2="62" class="rule"/>
+          <text id="alarm-text" x="234" y="51" font-size="13" fill="#c7d8e4">no active alarms</text>
+          <text id="alarm-count" x="1436" y="51" font-size="11" fill="#6d8496" text-anchor="end">0 ACTIVE</text>
 
-          <!-- CLIENTS -->
-          <rect x="28" y="250" width="110" height="76" fill="#0d151c" stroke="#3a5464" stroke-width="1.5"/>
-          <text x="83" y="282" font-size="14" fill="#c7d8e4" text-anchor="middle">CLIENTS</text>
-          <text x="83" y="302" font-size="11" fill="#6d8496" text-anchor="middle">curl / demo</text>
-          <line x1="138" y1="288" x2="170" y2="288" stroke="#34c3e0" stroke-width="2" marker-end="url(#s)"/>
+          <!-- ================================================================
+               BAND 1 — accept and store. Reads left to right.
+               ================================================================ -->
+          <text class="band-n" x="48" y="106">1</text>
+          <text class="band" x="70" y="106">ACCEPT AND STORE &#183; SYNCHRONOUS</text>
+          <line x1="392" y1="102" x2="1060" y2="102" class="rule"/>
 
-          <!-- GATEWAY -->
-          <rect x="172" y="240" width="150" height="98" fill="#101a22" stroke="#3a5464" stroke-width="2"/>
-          <rect x="172" y="240" width="150" height="22" fill="#16232c"/>
-          <text x="182" y="256" font-size="10" fill="#6d8496">SVC-01</text>
-          <circle id="led-gateway" cx="308" cy="251" r="6" fill="#5a6b78"/>
-          <text x="247" y="290" font-size="15" fill="#c7d8e4" text-anchor="middle">GATEWAY</text>
-          <text id="txt-gateway" x="247" y="310" font-size="11" fill="#6d8496" text-anchor="middle">—</text>
-          <text x="247" y="328" font-size="10" fill="#4a5f6e" text-anchor="middle">POST /order</text>
+          <!-- clients -->
+          <rect class="box-soft" x="48" y="136" width="150" height="66" rx="2"/>
+          <text class="name" x="123" y="167" text-anchor="middle">Clients</text>
+          <text class="sub"  x="123" y="185" text-anchor="middle">curl or DevDemo.cmd</text>
 
-          <!-- gateway -> echo (sync) -->
-          <path d="M247 240 V172" fill="none" stroke="#34c3e0" stroke-width="2" marker-end="url(#s)"/>
-          <text x="258" y="206" font-size="10" fill="#4a5f6e">/relay</text>
-          <rect x="172" y="86" width="150" height="84" fill="#0d151c" stroke="#3a5464" stroke-width="1.5"/>
-          <rect x="172" y="86" width="150" height="22" fill="#16232c"/>
-          <text x="182" y="102" font-size="10" fill="#6d8496">SVC-02</text>
-          <circle id="led-echo" cx="308" cy="97" r="6" fill="#5a6b78"/>
-          <text x="247" y="134" font-size="14" fill="#c7d8e4" text-anchor="middle">ECHO</text>
-          <text id="txt-echo" x="247" y="154" font-size="11" fill="#6d8496" text-anchor="middle">—</text>
+          <path class="line-sync" d="M198 169 H244" marker-end="url(#arrow-sync)"/>
+          <text class="edge-lbl" x="221" y="128" text-anchor="middle">place an order</text>
 
-          <!-- gateway -> postgres (write) -->
-          <path d="M247 338 V430 H352" fill="none" stroke="#34c3e0" stroke-width="2" marker-end="url(#s)"/>
-          <rect id="box-g-accepted" x="160" y="356" width="118" height="20" fill="#0d151c" stroke="#263945"/>
-          <text id="g-accepted" x="219" y="371" font-size="11" fill="#34c3e0" text-anchor="middle">—</text>
-          <text x="258" y="424" font-size="10" fill="#4a5f6e">order + outbox, one transaction</text>
+          <!-- gateway -->
+          <rect class="box" x="248" y="136" width="196" height="66" rx="2"/>
+          <circle id="led-gateway" cx="428" cy="150" r="6" fill="#5a6b78"/>
+          <text class="name" x="336" y="167" text-anchor="middle">Gateway service</text>
+          <text id="txt-gateway" class="detail" x="336" y="185" text-anchor="middle">&mdash;</text>
 
-          <!-- POSTGRES -->
-          <path d="M354 404 h104 v66 h-104 z" fill="#0d151c" stroke="#3a5464" stroke-width="1.5"/>
-          <ellipse cx="406" cy="404" rx="52" ry="10" fill="#16232c" stroke="#3a5464" stroke-width="1.5"/>
-          <circle id="led-postgres" cx="446" cy="386" r="6" fill="#5a6b78"/>
-          <text x="406" y="436" font-size="13" fill="#c7d8e4" text-anchor="middle">POSTGRES</text>
-          <text id="txt-postgres" x="406" y="454" font-size="9" fill="#6d8496" text-anchor="middle">—</text>
-          <text x="406" y="492" font-size="10" fill="#4a5f6e" text-anchor="middle">PostgreSQL &middot; shared instance</text>
+          <path class="line-sync" d="M444 169 H489" marker-end="url(#arrow-sync)"/>
+          <text class="edge-lbl" x="466" y="128" text-anchor="middle">one transaction</text>
 
-          <!-- postgres -> relay -->
-          <path d="M458 430 H520" fill="none" stroke="#34c3e0" stroke-width="2" marker-end="url(#s)"/>
-          <text x="470" y="422" font-size="10" fill="#4a5f6e">poll</text>
+          <!-- postgresql -->
+          <rect class="box" x="493" y="136" width="196" height="66" rx="2"/>
+          <circle id="led-postgres" cx="673" cy="150" r="6" fill="#5a6b78"/>
+          <text class="name" x="581" y="167" text-anchor="middle">PostgreSQL</text>
+          <text id="txt-postgres" class="detail" x="581" y="185" text-anchor="middle">&mdash;</text>
 
-          <!-- OUTBOX RELAY -->
-          <rect x="522" y="386" width="150" height="90" fill="#101a22" stroke="#3a5464" stroke-width="2"/>
-          <rect x="522" y="386" width="150" height="22" fill="#16232c"/>
-          <text x="532" y="402" font-size="10" fill="#6d8496">SVC-03</text>
-          <circle id="led-relay" cx="658" cy="397" r="6" fill="#5a6b78"/>
-          <text x="597" y="432" font-size="14" fill="#c7d8e4" text-anchor="middle">OUTBOX RELAY</text>
-          <text id="txt-relay" x="597" y="452" font-size="11" fill="#6d8496" text-anchor="middle">—</text>
-          <text x="597" y="468" font-size="10" fill="#4a5f6e" text-anchor="middle">at-least-once</text>
+          <path class="line-sync" d="M689 169 H734" marker-end="url(#arrow-sync)"/>
+          <text class="edge-lbl" x="711" y="128" text-anchor="middle">poll</text>
 
-          <!-- relay -> nats (async) -->
-          <path d="M672 431 H724 V330 H752" fill="none" stroke="#b07cff" stroke-width="2" stroke-dasharray="9 6" marker-end="url(#a)"/>
-          <rect id="box-g-relayed" x="640" y="496" width="118" height="20" fill="#0d151c" stroke="#263945"/>
-          <text id="g-relayed" x="699" y="511" font-size="11" fill="#b07cff" text-anchor="middle">—</text>
+          <!-- outbox relay -->
+          <rect class="box" x="738" y="136" width="196" height="66" rx="2"/>
+          <circle id="led-relay" cx="918" cy="150" r="6" fill="#5a6b78"/>
+          <text class="name" x="826" y="167" text-anchor="middle">Outbox relay</text>
+          <text id="txt-relay" class="detail" x="826" y="185" text-anchor="middle">&mdash;</text>
 
-          <!-- NATS -->
-          <rect x="752" y="150" width="112" height="400" fill="#101a22" stroke="#b07cff" stroke-width="2"/>
-          <rect x="752" y="150" width="112" height="24" fill="#1a1430"/>
-          <text x="762" y="167" font-size="10" fill="#b07cff">MQ-01</text>
-          <circle id="led-nats" cx="850" cy="162" r="6" fill="#5a6b78"/>
-          <text x="808" y="212" font-size="14" fill="#c7d8e4" text-anchor="middle">NATS</text>
-          <text x="808" y="232" font-size="12" fill="#b07cff" text-anchor="middle">JETSTREAM</text>
-          <text id="txt-nats" x="808" y="250" font-size="10" fill="#6d8496" text-anchor="middle">—</text>
-          <line x1="766" y1="272" x2="850" y2="272" stroke="#263945"/>
-          <text x="808" y="296" font-size="10" fill="#6d8496" text-anchor="middle">ORDER_</text>
-          <text x="808" y="310" font-size="10" fill="#6d8496" text-anchor="middle">COMMANDS</text>
-          <text x="808" y="330" font-size="9" fill="#4a5f6e" text-anchor="middle">1 shared consumer</text>
-          <line x1="766" y1="348" x2="850" y2="348" stroke="#263945"/>
-          <text x="808" y="372" font-size="10" fill="#6d8496" text-anchor="middle">ORDER_</text>
-          <text x="808" y="386" font-size="10" fill="#6d8496" text-anchor="middle">EVENTS</text>
-          <text x="808" y="406" font-size="9" fill="#4a5f6e" text-anchor="middle">2 consumers</text>
-          <line x1="766" y1="424" x2="850" y2="424" stroke="#263945"/>
-          <text x="808" y="448" font-size="10" fill="#6d8496" text-anchor="middle">ORDER_DLQ</text>
-          <rect id="box-g-dlq" x="758" y="462" width="100" height="20" fill="#0d151c" stroke="#263945"/>
-          <text id="g-dlq" x="808" y="477" font-size="11" fill="#6d8496" text-anchor="middle">—</text>
-          <text x="808" y="512" font-size="9" fill="#4a5f6e" text-anchor="middle">DevReplay.cmd</text>
-          <text x="808" y="528" font-size="9" fill="#4a5f6e" text-anchor="middle">returns them</text>
+          <path class="line-async" d="M934 169 H986" marker-end="url(#arrow-async)"/>
 
-          <!-- nats -> worker (async) -->
-          <path d="M864 300 H920" fill="none" stroke="#b07cff" stroke-width="2" stroke-dasharray="9 6" marker-end="url(#a)"/>
-          <rect id="box-g-queue" x="866" y="248" width="104" height="20" fill="#0d151c" stroke="#263945"/>
-          <text id="g-queue" x="918" y="263" font-size="11" fill="#b07cff" text-anchor="middle">—</text>
+          <!-- continuation tag: leaves band 1 -->
+          <rect class="box-tag" x="990" y="146" width="70" height="46" rx="2"/>
+          <text class="tag-txt" x="1025" y="175" text-anchor="middle">&#9660; A</text>
 
-          <!-- WORKER -->
-          <rect id="node-worker" x="922" y="252" width="166" height="98" fill="#101a22" stroke="#3a5464" stroke-width="2"/>
-          <rect x="922" y="252" width="166" height="22" fill="#16232c"/>
-          <text x="932" y="268" font-size="10" fill="#6d8496">SVC-04</text>
-          <circle id="led-worker" cx="1074" cy="263" r="6" fill="#5a6b78"/>
-          <text x="1005" y="302" font-size="15" fill="#c7d8e4" text-anchor="middle">WORKER</text>
-          <text id="txt-worker" x="1005" y="322" font-size="11" fill="#6d8496" text-anchor="middle">—</text>
-          <text x="1005" y="340" font-size="10" fill="#4a5f6e" text-anchor="middle">shared consumer name</text>
-          <rect id="box-g-p99" x="946" y="366" width="118" height="20" fill="#0d151c" stroke="#263945"/>
-          <text id="g-p99" x="1005" y="381" font-size="11" fill="#6d8496" text-anchor="middle">—</text>
+          <!-- the synchronous side example, hanging below the gateway -->
+          <path class="line-sync" d="M336 202 V244" marker-end="url(#arrow-sync)"/>
+          <text class="edge-lbl" x="348" y="226">a simpler example</text>
 
-          <!-- worker -> redis -->
-          <path d="M1005 386 V430 H1108" fill="none" stroke="#34c3e0" stroke-width="1.5" marker-end="url(#s)"/>
-          <rect x="1110" y="404" width="100" height="52" rx="3" fill="#0d151c" stroke="#3a5464" stroke-width="1.5"/>
-          <circle id="led-redis" cx="1196" cy="416" r="5" fill="#5a6b78"/>
-          <text x="1155" y="428" font-size="13" fill="#c7d8e4" text-anchor="middle">REDIS</text>
-          <text id="txt-redis" x="1155" y="446" font-size="9" fill="#6d8496" text-anchor="middle">—</text>
+          <rect class="box-soft" x="248" y="248" width="196" height="56" rx="2"/>
+          <circle id="led-echo" cx="428" cy="262" r="6" fill="#5a6b78"/>
+          <text class="name" x="336" y="274" text-anchor="middle">Echo service</text>
+          <text id="txt-echo" class="detail" x="336" y="292" text-anchor="middle">&mdash;</text>
 
-          <!-- worker -> nats events (async, back up) -->
-          <path d="M1005 252 V196 H872" fill="none" stroke="#b07cff" stroke-width="2" stroke-dasharray="9 6" marker-end="url(#a)"/>
-          <text x="900" y="188" font-size="10" fill="#4a5f6e">publishes order.completed</text>
+          <!-- ================================================================
+               BAND 2 — the broker. Reads left to right, fans out downward.
+               ================================================================ -->
+          <text class="band-n" x="48" y="352">2</text>
+          <text class="band" x="70" y="352">HAND OFF THROUGH THE BROKER &#183; NATS JETSTREAM</text>
+          <circle id="led-nats" cx="500" cy="348" r="6" fill="#5a6b78"/>
+          <text id="txt-nats" class="detail" x="516" y="352">&mdash;</text>
+          <line x1="620" y1="348" x2="1060" y2="348" class="rule"/>
 
-          <!-- nats -> notifier / audit (async) -->
-          <path d="M864 382 H900 V620 H948" fill="none" stroke="#b07cff" stroke-width="2" stroke-dasharray="9 6" marker-end="url(#a)"/>
-          <path d="M864 400 H920 V760 H948" fill="none" stroke="#b07cff" stroke-width="2" stroke-dasharray="9 6" marker-end="url(#a)"/>
+          <!-- continuation tag: enters band 2 -->
+          <rect class="box-tag" x="48" y="378" width="70" height="46" rx="2"/>
+          <text class="tag-txt" x="83" y="407" text-anchor="middle">A &#9654;</text>
 
-          <!-- NOTIFIER -->
-          <rect x="950" y="576" width="166" height="88" fill="#101a22" stroke="#3a5464" stroke-width="2"/>
-          <rect x="950" y="576" width="166" height="22" fill="#16232c"/>
-          <text x="960" y="592" font-size="10" fill="#6d8496">SVC-05</text>
-          <circle id="led-notifier" cx="1102" cy="587" r="6" fill="#5a6b78"/>
-          <text x="1033" y="624" font-size="14" fill="#c7d8e4" text-anchor="middle">NOTIFIER</text>
-          <text id="txt-notifier" x="1033" y="644" font-size="11" fill="#6d8496" text-anchor="middle">—</text>
-          <text x="1033" y="658" font-size="9" fill="#4a5f6e" text-anchor="middle">own consumer</text>
-          <rect id="box-g-notified" x="1136" y="610" width="110" height="20" fill="#0d151c" stroke="#263945"/>
-          <text id="g-notified" x="1191" y="625" font-size="11" fill="#b07cff" text-anchor="middle">—</text>
+          <path class="line-async" d="M118 401 H150" marker-end="url(#arrow-async)"/>
 
-          <!-- AUDIT -->
-          <rect x="950" y="716" width="166" height="88" fill="#101a22" stroke="#3a5464" stroke-width="2"/>
-          <rect x="950" y="716" width="166" height="22" fill="#16232c"/>
-          <text x="960" y="732" font-size="10" fill="#6d8496">SVC-06</text>
-          <circle id="led-audit" cx="1102" cy="727" r="6" fill="#5a6b78"/>
-          <text x="1033" y="764" font-size="14" fill="#c7d8e4" text-anchor="middle">AUDIT</text>
-          <text id="txt-audit" x="1033" y="784" font-size="11" fill="#6d8496" text-anchor="middle">—</text>
-          <text x="1033" y="798" font-size="9" fill="#4a5f6e" text-anchor="middle">own consumer</text>
-          <rect id="box-g-audited" x="1136" y="750" width="110" height="20" fill="#0d151c" stroke="#263945"/>
-          <text id="g-audited" x="1191" y="765" font-size="11" fill="#b07cff" text-anchor="middle">—</text>
+          <!-- command stream -->
+          <rect class="box" x="154" y="372" width="218" height="66" rx="2"/>
+          <text class="name" x="263" y="399" text-anchor="middle">Command stream</text>
+          <text class="sub"  x="263" y="417" text-anchor="middle">one shared consumer</text>
 
-          <!-- audit -> postgres (long return) -->
-          <path d="M950 760 H500 V476" fill="none" stroke="#34c3e0" stroke-width="1.5" stroke-opacity=".55" marker-end="url(#s)"/>
-          <text x="540" y="754" font-size="10" fill="#4a5f6e">writes audit_log</text>
+          <path class="line-async" d="M372 405 H422" marker-end="url(#arrow-async)"/>
+          <text class="edge-lbl" x="397" y="364" text-anchor="middle">one takes it</text>
 
-          <!-- worker throughput gauge -->
-          <rect id="box-g-processed" x="1136" y="286" width="118" height="20" fill="#0d151c" stroke="#263945"/>
-          <text id="g-processed" x="1195" y="301" font-size="11" fill="#34c3e0" text-anchor="middle">—</text>
+          <!-- worker -->
+          <rect id="node-worker" class="box" x="426" y="372" width="196" height="66" rx="2"/>
+          <circle id="led-worker" cx="606" cy="386" r="6" fill="#5a6b78"/>
+          <text class="name" x="514" y="399" text-anchor="middle">Worker</text>
+          <text id="txt-worker" class="detail" x="514" y="417" text-anchor="middle">&mdash;</text>
 
-          <!-- OBSERVABILITY BUS -->
-          <path d="M247 338 V856" fill="none" stroke="#6d8496" stroke-width="1" stroke-dasharray="3 4" opacity=".7"/>
-          <path d="M597 476 V856" fill="none" stroke="#6d8496" stroke-width="1" stroke-dasharray="3 4" opacity=".7"/>
-          <path d="M1005 350 H1300 V856" fill="none" stroke="#6d8496" stroke-width="1" stroke-dasharray="3 4" opacity=".7"/>
-          <path d="M1116 620 H1300" fill="none" stroke="#6d8496" stroke-width="1" stroke-dasharray="3 4" opacity=".7"/>
-          <path d="M1116 760 H1300" fill="none" stroke="#6d8496" stroke-width="1" stroke-dasharray="3 4" opacity=".7"/>
-          <line x1="180" y1="856" x2="1420" y2="856" stroke="#6d8496" stroke-width="3"/>
-          <text x="180" y="844" font-size="11" fill="#6d8496" letter-spacing="1.4">OBSERVABILITY BUS &#8212; metrics &middot; traces &middot; logs</text>
-          <circle cx="247" cy="856" r="4" fill="#6d8496"/>
-          <circle cx="597" cy="856" r="4" fill="#6d8496"/>
-          <circle cx="1300" cy="856" r="4" fill="#6d8496"/>
+          <path class="line-async" d="M622 405 H672" marker-end="url(#arrow-async)"/>
+          <text class="edge-lbl" x="647" y="364" text-anchor="middle">publishes</text>
 
-          <path d="M330 856 V886" fill="none" stroke="#6d8496" stroke-width="1" marker-end="url(#m)"/>
-          <path d="M600 856 V886" fill="none" stroke="#6d8496" stroke-width="1" marker-end="url(#m)"/>
-          <path d="M870 856 V886" fill="none" stroke="#6d8496" stroke-width="1" marker-end="url(#m)"/>
-          <rect x="252" y="888" width="156" height="40" fill="#0d151c" stroke="#3a5464" stroke-width="1.5"/>
-          <text x="330" y="913" font-size="12" fill="#c7d8e4" text-anchor="middle">PROMETHEUS</text>
-          <rect x="522" y="888" width="156" height="40" fill="#0d151c" stroke="#3a5464" stroke-width="1.5"/>
-          <text x="600" y="913" font-size="12" fill="#c7d8e4" text-anchor="middle">GRAFANA</text>
-          <rect x="792" y="888" width="156" height="40" fill="#0d151c" stroke="#3a5464" stroke-width="1.5"/>
-          <text x="870" y="913" font-size="12" fill="#c7d8e4" text-anchor="middle">JAEGER</text>
+          <!-- event stream -->
+          <rect class="box" x="676" y="372" width="218" height="66" rx="2"/>
+          <text class="name" x="785" y="399" text-anchor="middle">Event stream</text>
+          <text class="sub"  x="785" y="417" text-anchor="middle">every subscriber gets a copy</text>
 
-          <!-- LEGEND -->
-          <rect x="1258" y="576" width="220" height="228" fill="#0a1117" stroke="#3a5464" stroke-width="1.5"/>
-          <rect x="1258" y="576" width="220" height="22" fill="#16232c"/>
-          <text x="1268" y="592" font-size="10" fill="#6d8496" letter-spacing="1.4">LEGEND</text>
-          <line x1="1272" y1="622" x2="1316" y2="622" stroke="#34c3e0" stroke-width="2" marker-end="url(#s)"/>
-          <text x="1326" y="626" font-size="11" fill="#c7d8e4">synchronous</text>
-          <line x1="1272" y1="648" x2="1316" y2="648" stroke="#b07cff" stroke-width="2" stroke-dasharray="9 6" marker-end="url(#a)"/>
-          <text x="1326" y="652" font-size="11" fill="#c7d8e4">async event</text>
-          <line x1="1272" y1="674" x2="1316" y2="674" stroke="#6d8496" stroke-width="1" stroke-dasharray="3 4"/>
-          <text x="1326" y="678" font-size="11" fill="#c7d8e4">telemetry</text>
-          <circle cx="1280" cy="704" r="5" fill="#2fd98a"/><text x="1294" y="708" font-size="11" fill="#c7d8e4">healthy</text>
-          <circle cx="1382" cy="704" r="5" fill="#ffb020"/><text x="1396" y="708" font-size="11" fill="#c7d8e4">degraded</text>
-          <circle cx="1280" cy="728" r="5" fill="#ff4a4a"/><text x="1294" y="732" font-size="11" fill="#c7d8e4">down</text>
-          <circle cx="1382" cy="728" r="5" fill="#5a6b78"/><text x="1396" y="732" font-size="11" fill="#c7d8e4">unknown</text>
-          <rect x="1272" y="748" width="42" height="18" fill="#0d151c" stroke="#263945"/>
-          <text x="1293" y="761" font-size="10" fill="#34c3e0" text-anchor="middle">000</text>
-          <text x="1324" y="761" font-size="11" fill="#c7d8e4">live gauge</text>
-          <text x="1272" y="788" font-size="10" fill="#4a5f6e">refresh 3s &middot; source: prometheus</text>
+          <!-- fan-out: two consumers, stacked so the copy is visible -->
+          <path class="line-async" d="M894 391 H932 V366 H976" marker-end="url(#arrow-async)"/>
+          <path class="line-async" d="M894 419 H932 V452 H976" marker-end="url(#arrow-async)"/>
 
-          <text x="28" y="930" font-size="10" fill="#4a5f6e">MIMIC-01 &middot; one shared consumer splits work &middot; separate consumers copy events</text>
+          <rect class="box" x="980" y="336" width="196" height="60" rx="2"/>
+          <circle id="led-notifier" cx="1160" cy="350" r="6" fill="#5a6b78"/>
+          <text class="name" x="1068" y="363" text-anchor="middle">Notifier</text>
+          <text id="txt-notifier" class="detail" x="1068" y="381" text-anchor="middle">&mdash;</text>
+
+          <rect class="box" x="980" y="422" width="196" height="60" rx="2"/>
+          <circle id="led-audit" cx="1160" cy="436" r="6" fill="#5a6b78"/>
+          <text class="name" x="1068" y="449" text-anchor="middle">Audit</text>
+          <text id="txt-audit" class="detail" x="1068" y="467" text-anchor="middle">&mdash;</text>
+
+          <text class="edge-lbl" x="1176" y="500" text-anchor="end">writes an audit record back to PostgreSQL</text>
+
+          <!-- what hangs below the worker: the store it dedupes with, and the
+               place a message goes when it cannot succeed -->
+          <path class="line-async" d="M480 438 V486" marker-end="url(#arrow-async)"/>
+          <text class="edge-lbl" x="300" y="470">claims each order once</text>
+
+          <path class="line-async" d="M568 438 V486" marker-end="url(#arrow-async)"/>
+          <text class="edge-lbl" x="700" y="470">after three failed attempts</text>
+
+          <rect class="box-soft" x="330" y="490" width="180" height="54" rx="2"/>
+          <circle id="led-redis" cx="494" cy="503" r="5" fill="#5a6b78"/>
+          <text class="name" x="420" y="515" text-anchor="middle">Redis</text>
+          <text id="txt-redis" class="detail" x="420" y="532" text-anchor="middle">&mdash;</text>
+
+          <rect class="box-soft" x="540" y="490" width="212" height="54" rx="2"/>
+          <text class="name" x="646" y="515" text-anchor="middle">Dead-letter stream</text>
+          <text class="sub"  x="646" y="532" text-anchor="middle">DevReplay.cmd returns them</text>
+
+          <!-- ================================================================
+               BAND 3 — telemetry. Every service reports downward into it.
+               ================================================================ -->
+          <text class="band-n" x="48" y="562">3</text>
+          <text class="band" x="70" y="562">WHAT EVERY SERVICE REPORTS</text>
+          <line x1="360" y1="558" x2="1060" y2="558" class="rule"/>
+
+          <!-- One rail, three drops. Every service above feeds it, so drawing a
+               line from each would add nine crossings and say nothing more. -->
+          <path class="line-quiet" d="M154 596 H1176"/>
+          <text class="edge-lbl" x="1176" y="588" text-anchor="end">every service above reports here</text>
+          <path class="line-quiet" d="M232 596 V630" marker-end="url(#arrow-quiet)"/>
+          <path class="line-quiet" d="M478 596 V630" marker-end="url(#arrow-quiet)"/>
+          <path class="line-quiet" d="M724 596 V630" marker-end="url(#arrow-quiet)"/>
+
+          <rect class="box-soft" x="154" y="634" width="156" height="52" rx="2"/>
+          <text class="name" x="232" y="659" text-anchor="middle">Prometheus</text>
+          <text class="sub"  x="232" y="676" text-anchor="middle">metrics</text>
+
+          <rect class="box-soft" x="400" y="634" width="156" height="52" rx="2"/>
+          <text class="name" x="478" y="659" text-anchor="middle">Grafana</text>
+          <text class="sub"  x="478" y="676" text-anchor="middle">dashboards</text>
+
+          <rect class="box-soft" x="646" y="634" width="156" height="52" rx="2"/>
+          <text class="name" x="724" y="659" text-anchor="middle">Jaeger</text>
+          <text class="sub"  x="724" y="676" text-anchor="middle">traces</text>
+
+          <!-- ================================================================
+               INSTRUMENT COLUMN — every number lives here, not on the diagram.
+               ================================================================ -->
+          <line x1="1216" y1="104" x2="1216" y2="780" class="rule"/>
+          <text class="band" x="1240" y="116">READINGS</text>
+
+          <rect class="tile" id="box-g-accepted" x="1240" y="132" width="220" height="62" rx="2"/>
+          <text class="read-lbl" x="1256" y="154">ORDERS ACCEPTED</text>
+          <text class="read-unt" x="1256" y="180">per second</text>
+          <text class="read-val" id="g-accepted" data-hue="#34c3e0" x="1444" y="182" text-anchor="end">&mdash;</text>
+
+          <rect class="tile" id="box-g-relayed" x="1240" y="202" width="220" height="62" rx="2"/>
+          <text class="read-lbl" x="1256" y="224">OUTBOX ROWS PUBLISHED</text>
+          <text class="read-unt" x="1256" y="250">per second</text>
+          <text class="read-val" id="g-relayed" data-hue="#b07cff" x="1444" y="252" text-anchor="end">&mdash;</text>
+
+          <rect class="tile" id="box-g-processed" x="1240" y="272" width="220" height="62" rx="2"/>
+          <text class="read-lbl" x="1256" y="294">ORDERS PROCESSED</text>
+          <text class="read-unt" x="1256" y="320">per second</text>
+          <text class="read-val" id="g-processed" data-hue="#b07cff" x="1444" y="322" text-anchor="end">&mdash;</text>
+
+          <rect class="tile" id="box-g-notified" x="1240" y="342" width="220" height="62" rx="2"/>
+          <text class="read-lbl" x="1256" y="364">NOTIFICATIONS HANDLED</text>
+          <text class="read-unt" x="1256" y="390">per second</text>
+          <text class="read-val" id="g-notified" data-hue="#b07cff" x="1444" y="392" text-anchor="end">&mdash;</text>
+
+          <rect class="tile" id="box-g-audited" x="1240" y="412" width="220" height="62" rx="2"/>
+          <text class="read-lbl" x="1256" y="434">AUDIT EVENTS HANDLED</text>
+          <text class="read-unt" x="1256" y="460">per second</text>
+          <text class="read-val" id="g-audited" data-hue="#b07cff" x="1444" y="462" text-anchor="end">&mdash;</text>
+
+          <rect class="tile" id="box-g-queue" x="1240" y="482" width="220" height="62" rx="2"/>
+          <text class="read-lbl" x="1256" y="504">WAITING FOR THE WORKER</text>
+          <text class="read-unt" x="1256" y="530">messages</text>
+          <text class="read-val" id="g-queue" data-hue="#34c3e0" x="1444" y="532" text-anchor="end">&mdash;</text>
+
+          <rect class="tile" id="box-g-dlq" x="1240" y="552" width="220" height="62" rx="2"/>
+          <text class="read-lbl" x="1256" y="574">PARKED AS DEAD LETTERS</text>
+          <text class="read-unt" x="1256" y="600">messages</text>
+          <text class="read-val" id="g-dlq" data-hue="#34c3e0" x="1444" y="602" text-anchor="end">&mdash;</text>
+
+          <rect class="tile" id="box-g-p99" x="1240" y="622" width="220" height="62" rx="2"/>
+          <text class="read-lbl" x="1256" y="644">SLOWEST ONE IN A HUNDRED</text>
+          <text class="read-unt" x="1256" y="670">milliseconds to process</text>
+          <text class="read-val" id="g-p99" data-hue="#34c3e0" x="1444" y="672" text-anchor="end">&mdash;</text>
+
+          <!-- legend: lines first, then what a lamp colour means -->
+          <text class="band" x="1240" y="712">KEY</text>
+
+          <path class="line-sync" d="M1240 730 H1278" marker-end="url(#arrow-sync)"/>
+          <text class="sub" x="1290" y="734">synchronous call</text>
+          <path class="line-async" d="M1240 752 H1278" marker-end="url(#arrow-async)"/>
+          <text class="sub" x="1290" y="756">message or event</text>
+          <path class="line-quiet" d="M1240 774 H1278"/>
+          <text class="sub" x="1290" y="778">telemetry</text>
+
+          <circle cx="1246" cy="796" r="5" fill="#2fd98a"/>
+          <text class="sub" x="1260" y="800">healthy</text>
+          <circle cx="1320" cy="796" r="5" fill="#ffb020"/>
+          <text class="sub" x="1334" y="800">degraded</text>
+          <circle cx="1404" cy="796" r="5" fill="#ff4a4a"/>
+          <text class="sub" x="1418" y="800">down</text>
         </svg>
       </figure>
+      <figcaption>
+        Every lamp and number here is read from the running system, not typed in.
+        The <b>worker</b> shares one durable consumer name, so the load splits
+        between its replicas; the <b>notifier</b> and the <b>audit</b> service hold
+        separate names, so each receives every event. That single difference is why
+        one of those readings halves when you scale and the others do not.
+      </figcaption>
     </div>
   </div>
-
-  <figcaption>
-    Every lamp and number here is read from the running system, not typed in.
-    <b>Worker</b> shares one durable consumer name so the load splits between its
-    replicas; <b>notifier</b> and <b>audit</b> hold separate names, so each receives
-    every event. That single difference is why one of those rates halves when you
-    scale and the others do not.
-  </figcaption>
 </div>
 
 <script>
-  // Polls the service, which polls Prometheus. One collector serves every open
+  // Polls this service, which polls Prometheus. One collector serves every open
   // tab, so a wall display costs the same as a single visitor.
+  //
+  // One second, matching the collector behind it. Prometheus scrapes every two
+  // seconds, so a change reaches this screen in about three seconds.
+  const POLL_MILLISECONDS = 1000;
+
   const COLOURS = { healthy:"#2fd98a", degraded:"#ffb020", down:"#ff4a4a", unknown:"#5a6b78" };
   const ALARM_GROUND = { healthy:"#0f1a14", degraded:"#241703", down:"#2a0f0f", unknown:"#141b21" };
 
-  const $ = (id) => document.getElementById(id);
+  const byId = (id) => document.getElementById(id);
 
   function paint(state) {
     for (const node of state.nodes) {
-      const led = $("led-" + node.id);
-      if (led) led.setAttribute("fill", COLOURS[node.status] || COLOURS.unknown);
-      const txt = $("txt-" + node.id);
-      if (txt) {
-        txt.textContent = node.detail;
-        txt.setAttribute("fill", node.status === "healthy" ? "#6d8496" : COLOURS[node.status]);
+      const lamp = byId("led-" + node.id);
+      if (lamp) lamp.setAttribute("fill", COLOURS[node.status] || COLOURS.unknown);
+
+      const detail = byId("txt-" + node.id);
+      if (detail) {
+        detail.textContent = node.detail;
+        detail.setAttribute("fill", node.status === "healthy" ? "#6d8496" : COLOURS[node.status]);
       }
-      // The worker's outline carries its state too, so a degraded block reads
-      // at a glance rather than needing the lamp to be found first.
+
+      // The outline of the worker carries its state too, so a degraded block
+      // reads at a glance rather than needing the lamp to be found first.
       if (node.id === "worker") {
-        const box = $("node-worker");
-        if (box) box.setAttribute("stroke", node.status === "healthy" ? "#3a5464" : COLOURS[node.status]);
+        const box = byId("node-worker");
+        if (box) box.setAttribute("stroke", node.status === "healthy" ? "#334c5c" : COLOURS[node.status]);
       }
     }
 
-    for (const gauge of state.gauges) {
-      const el = $(gauge.id);
-      if (!el) continue;
-      el.textContent = gauge.value;
-      el.setAttribute("fill", gauge.warn ? COLOURS.degraded : el.getAttribute("data-hue") || "#34c3e0");
-      const box = $("box-" + gauge.id);
-      if (box) box.setAttribute("stroke", gauge.warn ? COLOURS.degraded : "#263945");
+    for (const reading of state.gauges) {
+      const value = byId(reading.id);
+      if (!value) continue;
+      value.textContent = reading.value;
+      value.setAttribute("fill", reading.warn ? COLOURS.degraded : value.getAttribute("data-hue"));
+      const tile = byId("box-" + reading.id);
+      if (tile) tile.setAttribute("stroke", reading.warn ? COLOURS.degraded : "#22333e");
     }
 
-    const worst = state.alarms.reduce((acc, alarm) =>
+    const worst = state.alarms.reduce((carried, alarm) =>
       alarm.severity === "down" ? "down"
-        : (acc === "down" ? acc : (alarm.severity === "degraded" ? "degraded" : acc)), "healthy");
+        : (carried === "down" ? carried : (alarm.severity === "degraded" ? "degraded" : carried)), "healthy");
 
-    const box = $("alarm-box"), led = $("alarm-led"),
-          title = $("alarm-title"), text = $("alarm-text"), count = $("alarm-count");
+    const box = byId("alarm-box"), lamp = byId("alarm-led"),
+          title = byId("alarm-title"), text = byId("alarm-text"), count = byId("alarm-count");
 
     if (state.alarms.length === 0) {
       box.setAttribute("stroke", COLOURS.healthy);
       box.setAttribute("fill", ALARM_GROUND.healthy);
-      led.setAttribute("fill", COLOURS.healthy);
+      lamp.setAttribute("fill", COLOURS.healthy);
       title.setAttribute("fill", COLOURS.healthy);
       title.textContent = "ALL CLEAR";
       text.textContent = "no active alarms";
@@ -321,7 +381,7 @@
       const hue = COLOURS[worst] || COLOURS.degraded;
       box.setAttribute("stroke", hue);
       box.setAttribute("fill", ALARM_GROUND[worst] || ALARM_GROUND.degraded);
-      led.setAttribute("fill", hue);
+      lamp.setAttribute("fill", hue);
       title.setAttribute("fill", hue);
       title.textContent = worst === "down" ? "ALARM" : "WARNING";
       text.textContent = state.alarms[0].text;
@@ -329,10 +389,12 @@
       count.textContent = state.alarms.length + " ACTIVE";
     }
 
-    $("stamp").textContent = new Date(state.generated_at).toLocaleTimeString();
-    const conn = $("conn");
-    conn.textContent = state.sources_ok ? "LIVE" : "SOURCE LOST";
-    conn.className = state.sources_ok ? "" : "stale";
+    byId("stamp").textContent = new Date(state.generated_at).toLocaleTimeString();
+    const connection = byId("connection");
+    connection.innerHTML = state.sources_ok
+      ? '<span id="beat">&#9679;</span> LIVE'
+      : '<span id="beat">&#9679;</span> SOURCE LOST';
+    connection.className = state.sources_ok ? "" : "stale";
   }
 
   async function tick() {
@@ -344,14 +406,14 @@
       // A failed poll must not blank the panel. Keep the last good picture and
       // say the feed is stale - an empty screen is indistinguishable from a
       // healthy system with nothing happening.
-      const conn = $("conn");
-      conn.textContent = "NO FEED";
-      conn.className = "stale";
+      const connection = byId("connection");
+      connection.textContent = "NO FEED";
+      connection.className = "stale";
     }
   }
 
   tick();
-  setInterval(tick, 3000);
+  setInterval(tick, POLL_MILLISECONDS);
 </script>
 </body>
 </html>

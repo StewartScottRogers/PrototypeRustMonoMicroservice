@@ -47,7 +47,12 @@ const DEFAULT_PORT: u16 = 8080;
 /// The browser polls this service, and this service polls Prometheus. One
 /// collector serving every open tab means twenty people watching the panel
 /// generate the same query load as one.
-const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+///
+/// One second is the middle link of a chain that is only as quick as its
+/// slowest part: Prometheus scrapes every 2 seconds, this reads every second,
+/// and the browser polls every second. Making any one of them faster on its
+/// own buys nothing.
+const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// The mimic panel, baked into the binary at compile time.
 const PANEL_HTML: &str = include_str!("../assets/panel.html");

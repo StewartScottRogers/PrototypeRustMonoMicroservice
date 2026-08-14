@@ -5,8 +5,16 @@
 # not a demo.
 
 global:
-  scrape_interval: 5s
-  evaluation_interval: 5s
+  # Two seconds, because the mimic panel is the point of this stack and a panel
+  # that lags the system it is drawing teaches the wrong thing. The whole chain
+  # is sized to match: scrape every 2s, the collector reads every 1s, the
+  # browser polls every 1s, so a change reaches the screen in about 3 seconds
+  # rather than the 20 or so it used to take.
+  #
+  # Affordable only because this is thirteen local containers. A real estate
+  # would not scrape this hard.
+  scrape_interval: 2s
+  evaluation_interval: 2s
 
 scrape_configs:
   # Name-based discovery rather than a static host list, because compose can run more

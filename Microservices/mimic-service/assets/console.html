@@ -268,7 +268,9 @@
 
   loadLinks();
   pollStatus();
-  setInterval(pollStatus, 3000);
+  // One second, matching the panel and the collector behind it, so the status
+  // strip never disagrees with the panel it is framing.
+  setInterval(pollStatus, 1000);
 </script>
 </body>
 </html>
