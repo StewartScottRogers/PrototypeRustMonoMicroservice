@@ -81,9 +81,17 @@ this avoids. `rustfmt` and `clippy` come from the toolchain file's `components`;
 
 1. Actions are pinned by tag, not commit SHA. Pin by digest (Dependabot then
    maintains them) as part of the `gh-supply-chain` skill.
-2. Coverage threshold is `--fail-under-lines 60`. Raise it as the workspace
-   grows; lowering it needs a reason in the PR body.
-3. `affected-crates.sh` is bash + jq, so the `affected` job must stay on a
+2. Coverage threshold is `--fail-under-lines 35`, a floor rather than a target.
+   The messaging services took the workspace from ~60% to 41%: `main()` bodies,
+   the NATS client, consumer loops and the outbox relay cannot be unit tested
+   without a broker and a database, and the `integration` job covers those
+   instead. Raise it as unit tests grow; lowering it again needs a reason in the
+   PR body.
+
+3. `--no-tests=pass` on every nextest call. A crate with no unit tests — `db-core`,
+   the subscriber services — is wiring, not a failure, but nextest exits 4 on it
+   by default.
+4. `affected-crates.sh` is bash + jq, so the `affected` job must stay on a
    Linux runner. It runs under `set -euo pipefail`; when adding to it, remember
    that expanding `${#array[@]}` on a declared-but-empty associative array is an
    *unbound variable* error, not a zero. Guard with `${array[*]+x}` first — this

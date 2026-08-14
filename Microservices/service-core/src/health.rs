@@ -71,6 +71,22 @@ async fn probe(status: &'static str, service: String) -> Json<Probe> {
     Json(Probe { status, service })
 }
 
+/// Runs an HTTP server exposing only the health probes, until the process ends.
+///
+/// The consumer services (worker, notifier, audit) have no API of their own —
+/// they read from NATS. They still need this, because Docker's `HEALTHCHECK`
+/// has nothing else to ask, and `depends_on: condition: service_healthy` in
+/// compose would never be satisfied.
+///
+/// Returns `std::io::Result<()>`, so a port already in use surfaces as an error
+/// rather than a panic.
+pub async fn serve(service: &'static str, port: u16) -> std::io::Result<()> {
+    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!(%addr, "health endpoints listening");
+    axum::serve(listener, health_routes(service)).await
+}
+
 /// Asks `http://127.0.0.1:{port}/healthz` whether the service is alive.
 ///
 /// The container image is `distroless`: no shell, no `curl`, no `wget`. So the

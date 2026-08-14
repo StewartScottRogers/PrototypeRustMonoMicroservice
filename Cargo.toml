@@ -17,18 +17,52 @@ repository = "https://github.com/StewartScottRogers/PrototypeRustMonoMicroservic
 # one PR instead of one per crate.
 [workspace.dependencies]
 service-core = { path = "Microservices/service-core" }
+messaging-core = { path = "Microservices/messaging-core" }
+db-core = { path = "Microservices/db-core" }
 
 anyhow = "1"
+# NATS client. Pure Rust - no C library to install, which is why the runtime
+# image can stay distroless. JetStream (durable streams) is part of this crate.
+async-nats = "0.50"
 axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
 # HTTP *client*, used by gateway-service to call echo-service. TLS is switched
 # off (`default-features = false`): traffic between containers on the compose
 # network is plain HTTP, and the default TLS stack is a large dependency to
 # compile for nothing.
+redis = { version = "1", default-features = false, features = ["tokio-comp"] }
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+serde_json = "1"
+# No TLS feature: the database is on the compose network, and pulling in a TLS
+# stack would add minutes to every container build for nothing. `migrate` is
+# what provides the sqlx::migrate! macro that embeds the .sql files.
+sqlx = { version = "0.9", default-features = false, features = [
+    "chrono",
+    "json",
+    # `macros` is what provides sqlx::migrate!. It does NOT force compile-time
+    # query checking - that only applies to the query! macros, which this
+    # workspace deliberately avoids so the container build needs no database.
+    "macros",
+    "migrate",
+    "postgres",
+    "runtime-tokio",
+    "uuid",
+] }
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+
+# OpenTelemetry. These four must move in lockstep - a mismatched pair is the
+# usual cause of a build that will not resolve. tracing-opentelemetry runs one
+# minor version ahead of the others by convention.
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+tracing-opentelemetry = "0.33"
 
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }

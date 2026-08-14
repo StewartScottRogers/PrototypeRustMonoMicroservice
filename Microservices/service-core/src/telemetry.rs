@@ -1,48 +1,97 @@
-//! Process-wide tracing setup.
+//! Process-wide tracing setup: structured logs, plus spans exported to Jaeger.
 //!
-//! "Tracing" here means structured logging: instead of printing a sentence, a
-//! service emits a record with named fields, which a log system can index and
-//! query. The `tracing` crate is the de facto standard for this in Rust.
+//! "Tracing" here means two things at once, and they share one API:
+//!
+//! - **Structured logs** — each record is a set of named fields, not a
+//!   sentence, so a log system can index and query them.
+//! - **Distributed traces** — spans stitched together across services, so one
+//!   request that crosses four processes and a message broker reads as a single
+//!   timeline.
+//!
+//! The second is what makes eventing debuggable. Publishing an event decouples
+//! the publisher from its subscribers, which is the point — but it also hides
+//! the causal chain. A trace gives it back.
 
-// A *prelude* is a module of traits a crate expects you to import wholesale.
-// The `.with(...)` calls below are trait methods, and Rust only lets you call a
-// trait method when that trait is in scope — hence this import.
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{EnvFilter, fmt};
 
-/// Installs a JSON tracing subscriber for `service`.
+/// Installs the subscriber for `service`.
 ///
-/// A *subscriber* is the thing that decides what happens to log records. Until
-/// one is installed, `tracing::info!` and friends are silently discarded.
+/// If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans are also exported there —
+/// `http://jaeger:4317` in the compose stack. If it is unset, or the collector
+/// is unreachable, the service logs normally and simply produces no traces.
+/// Observability must never be the reason a service fails to start.
 ///
-/// Level comes from the `RUST_LOG` environment variable, defaulting to `info`.
-/// JSON output is what makes the logs queryable once the service runs in a
-/// container.
-///
-/// Call this once, from `main`. A second call panics inside `tracing`, because
-/// the global subscriber can only be set one time.
-///
-/// The `&'static str` parameter means the name must live for the whole program
-/// — a string literal such as `"echo-service"` does.
+/// Call once, from `main`. A second call panics inside `tracing`.
 pub fn init_tracing(service: &'static str) {
-    // `try_from_default_env()` reads `RUST_LOG` and returns a `Result`.
-    // `.unwrap_or_else(|_| ...)` supplies a fallback when it fails; the `|_|`
-    // closure ignores the error value. Unlike `.unwrap_or(...)`, the fallback
-    // is only built if it is actually needed.
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    // This is the *builder pattern*: each call returns a modified value, so the
-    // steps chain together and the final `.init()` consumes the whole thing.
+    let json_layer = fmt::layer().json().flatten_event(true);
+
+    // `Option<Layer>` is itself a valid layer: `None` contributes nothing. That
+    // is how the same registry works both with and without a collector,
+    // without duplicating the whole builder chain.
+    let otel_layer = otel_layer(service);
+
     tracing_subscriber::registry()
         .with(filter)
-        // `.json()` switches the output format; `.flatten_event(true)` lifts
-        // the record's fields to the top level of the JSON object instead of
-        // nesting them under "fields".
-        .with(fmt::layer().json().flatten_event(true))
+        .with(json_layer)
+        .with(otel_layer)
         .init();
 
-    // `tracing::info!` is a *macro* (the `!` gives it away). Macros run at
-    // compile time and can do things functions cannot — here, capturing
-    // `service` as a named field rather than pasting it into a message string.
     tracing::info!(service, "tracing initialised");
+}
+
+/// Builds the OpenTelemetry layer, or `None` if tracing is not configured.
+fn otel_layer<S>(
+    service: &'static str,
+) -> Option<tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>>
+where
+    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
+{
+    let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok()?;
+
+    // The propagator decides the wire format for "which trace is this part of".
+    // W3C traceparent is the standard one, and it is what messaging-core writes
+    // into NATS headers so a trace survives the hop through the broker.
+    opentelemetry::global::set_text_map_propagator(
+        opentelemetry_sdk::propagation::TraceContextPropagator::new(),
+    );
+
+    // `with_endpoint` is a trait method, so the trait must be in scope for it
+    // to be callable - the same rule that made `tower::ServiceExt` necessary
+    // for `.oneshot()` in the tests.
+    use opentelemetry_otlp::WithExportConfig as _;
+
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(&endpoint)
+        .build()
+        .inspect_err(|error| {
+            eprintln!("tracing disabled: could not build the OTLP exporter: {error}");
+        })
+        .ok()?;
+
+    // A *batch* exporter sends spans on a background task. The alternative
+    // blocks the request that produced the span on a network call to the
+    // collector, which is a bad trade.
+    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                // This is the name in Jaeger's service dropdown.
+                .with_service_name(service)
+                .build(),
+        )
+        .build();
+
+    use opentelemetry::trace::TracerProvider as _;
+    let tracer = provider.tracer(service);
+
+    // Handing the provider to the global registry keeps it alive; dropping it
+    // here would shut the exporter down immediately and silently.
+    opentelemetry::global::set_tracer_provider(provider);
+
+    eprintln!("tracing: exporting spans to {endpoint}");
+    Some(tracing_opentelemetry::layer().with_tracer(tracer))
 }

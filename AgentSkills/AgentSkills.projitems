@@ -21,5 +21,6 @@
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\rust-service-image\SKILL.md" Link="rust-service-image\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\dev-environment\SKILL.md" Link="dev-environment\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\gh-supply-chain\SKILL.md" Link="gh-supply-chain\SKILL.md" />
+    <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\messaging-and-eventing\SKILL.md" Link="messaging-and-eventing\SKILL.md" />
   </ItemGroup>
 </Project>

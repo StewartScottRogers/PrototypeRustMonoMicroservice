@@ -7,10 +7,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A Cargo workspace and a GitHub Actions CI gate exist; there are no C# sources.
 
 - `Cargo.toml` — virtual workspace manifest at the repo root, `members = ["Microservices/*"]`. Dependency versions and lint levels live here; crates opt in with `dep.workspace = true` and `[lints] workspace = true`.
-- `Microservices/service-core` — shared library: health probes, self-probe for container healthchecks, env config, tracing setup.
-- `Microservices/echo-service` — reference binary service (axum + tokio). Copy it to start a new service.
-- `Microservices/gateway-service` — front door; `POST /relay` forwards to `echo-service` over the compose network.
-- `compose.yaml` + `Dev*.cmd` — the local development stack (both services, Postgres, Redis). See `.claude/skills/dev-environment/SKILL.md`.
+Shared libraries:
+
+- `Microservices/service-core` — health probes, self-probe for container healthchecks, env config, tracing + OpenTelemetry setup.
+- `Microservices/messaging-core` — NATS/JetStream plumbing, message contracts, envelope, idempotency guard, trace propagation.
+- `Microservices/db-core` — the Postgres schema and migrations, shared so two services cannot fight over `_sqlx_migrations`.
+
+Services:
+
+- `Microservices/gateway-service` — front door. `POST /relay` calls `echo-service` synchronously; `POST /order` writes through a transactional outbox and relays to NATS.
+- `Microservices/worker-service` — JetStream queue consumer (2 replicas). Retry, dead-lettering, idempotency.
+- `Microservices/outbox-relay` — publishes committed outbox rows to NATS. Its own process so HTTP and relay throughput scale separately.
+- `Microservices/notifier-service`, `Microservices/audit-service` — two independent subscribers to the same event.
+- `Microservices/dlq-replay` — one-shot tool that puts dead letters back on the queue. Run with `DevReplay.cmd`, never automatically.
+- `Microservices/echo-service` — the original synchronous HTTP example. Copy it to start a simple service.
+
+- `compose.yaml` + `Dev*.cmd` — the local stack: 5 services, NATS, Jaeger, Postgres, Redis. `DevDemo.cmd` narrates the whole demonstration. See `.claude/skills/dev-environment/SKILL.md` and `.claude/skills/messaging-and-eventing/SKILL.md`.
 - `.github/workflows/ci.yml` + `.github/actions/setup-rust` + `.github/scripts/affected-crates.sh` — the CI gate. Rules and failure modes are documented in `.claude/skills/rust-ci-gate/SKILL.md`; read that before changing CI.
 - `Dockerfile` + `.github/workflows/image.yml` — one parameterised image build for every service, published to GHCR with a provenance attestation and a Trivy CVE scan. See `.claude/skills/rust-service-image/SKILL.md`.
 - `.github/workflows/security.yml` — CodeQL (public repos only), zizmor workflow audit, gitleaks secret scan. Every third-party action is pinned to a commit SHA; see `.claude/skills/gh-supply-chain/SKILL.md` before adding one.
@@ -32,7 +44,9 @@ cargo run -p echo-service            # PORT=8080 by default
 docker build --build-arg SERVICE=echo-service -t echo-service:local .
 docker run --rm -p 8080:8080 echo-service:local
 
-DevStart.cmd     # whole stack: both services + Postgres + Redis
+DevStart.cmd     # whole stack: 5 services + NATS + Jaeger + Postgres + Redis
+DevDemo.cmd      # run and narrate the whole demonstration
+DevReplay.cmd    # put dead letters back on the queue (--dry-run to look first)
 DevStatus.cmd    # what is running, and is it healthy
 DevLogs.cmd      # follow logs
 DevStop.cmd      # stop, keep everything

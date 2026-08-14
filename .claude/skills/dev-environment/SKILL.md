@@ -29,11 +29,20 @@ Run these from anywhere; each one `pushd`s to the repo root first.
 | `DevStop.cmd` | Stop containers | Containers, images, volumes |
 | `DevDelete.cmd` | Remove containers and network | Images, volumes (data kept) |
 | `DevRemove.cmd [-y]` | Remove containers, network, built images, volumes | Nothing |
+| `DevDemo.cmd` | Run and narrate the whole demonstration | — |
+| `DevReplay.cmd [--dry-run]` | Put dead letters back on the queue | — |
 
 `DevRemove.cmd` prompts for confirmation because it deletes the Postgres and
 Redis volumes. Pass `-y` to skip the prompt in a script.
 
 ## Non-negotiable rules
+
+0. **`.sql` files are pinned to LF in `.gitattributes`.** sqlx checksums each
+   migration's bytes and refuses to run when a previously applied file has
+   changed. Letting `* text=auto` rewrite them to CRLF on a Windows checkout
+   changes those bytes, and every database-using service then dies at startup
+   with *"migration 1 was previously applied but has been modified"*. It looks
+   like database corruption; it is a line ending.
 
 1. **Healthchecks call the service binary, not curl.** The runtime image is
    distroless: no shell, no curl, no wget. Each service answers
