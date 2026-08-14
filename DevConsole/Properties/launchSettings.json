@@ -1,0 +1,39 @@
+{
+  "profiles": {
+    "Dev Console (F5)": {
+      "commandName": "Project"
+    },
+    "Dev Start": {
+      "commandName": "Project",
+      "commandLineArgs": "start"
+    },
+    "Dev Status": {
+      "commandName": "Project",
+      "commandLineArgs": "status"
+    },
+    "Dev Logs": {
+      "commandName": "Project",
+      "commandLineArgs": "logs"
+    },
+    "Dev Demo": {
+      "commandName": "Project",
+      "commandLineArgs": "demo"
+    },
+    "Dev Replay (dry run)": {
+      "commandName": "Project",
+      "commandLineArgs": "replay --dry-run"
+    },
+    "Dev Stop": {
+      "commandName": "Project",
+      "commandLineArgs": "stop"
+    },
+    "Dev Delete": {
+      "commandName": "Project",
+      "commandLineArgs": "delete"
+    },
+    "Dev Remove (deletes volumes)": {
+      "commandName": "Project",
+      "commandLineArgs": "remove"
+    }
+  }
+}

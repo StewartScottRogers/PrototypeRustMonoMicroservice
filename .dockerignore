@@ -11,3 +11,6 @@ data/
 **/*.shproj
 **/*.projitems
 **/*.md
+# The Visual Studio F5 launcher. No image needs it, and its bin/ and obj/
+# would otherwise be sent to the daemon on every one of the eight builds.
+DevConsole/

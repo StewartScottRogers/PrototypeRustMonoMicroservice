@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-A Cargo workspace and a GitHub Actions CI gate exist; there are no C# sources.
+A Cargo workspace and a GitHub Actions CI gate exist. The one piece of C# is `DevConsole/`, a launcher that exists so Visual Studio's F5 starts the stack; it builds nothing the services use.
 
-- `Cargo.toml` — virtual workspace manifest at the repo root, `members = ["Microservices/*"]`. Dependency versions and lint levels live here; crates opt in with `dep.workspace = true` and `[lints] workspace = true`.
+- `Cargo.toml` — virtual workspace manifest at the repo root, `members = ["Microservices/*", "e2e"]`. Dependency versions and lint levels live here; crates opt in with `dep.workspace = true` and `[lints] workspace = true`.
 Shared libraries:
 
 - `Microservices/service-core` — health probes, self-probe for container healthchecks, env config, tracing + OpenTelemetry setup.
@@ -31,6 +31,7 @@ Services:
 - `rust-toolchain.toml`, `clippy.toml`, `deny.toml`, `.config/nextest.toml` — tool config, all at the workspace root.
 - `DemoRustMonoMicroservice.slnx` — Visual Studio solution (XML `.slnx` format, not `.sln`). Holds a "Solution Items" folder for the root-level files plus the `Microservices` project.
 - `Microservices/Microservices.shproj` + `.projitems` — a C# shared project (`HasSharedItems`, root namespace `Microservices`) used only to surface the Rust files in Solution Explorer.
+- `DevConsole/DevConsole.csproj` — the solution's only buildable project, and therefore its default startup project. A .NET 10 console app that walks up from its own location to find the repo root and runs a `Dev*.cmd` script through `cmd.exe`, forwarding the exit code. **F5 in Visual Studio starts the whole compose stack.** See "The one exception: `DevConsole/`" below.
 - `hrdrClaudeNative.cmd`, `RunClaude.cmd` — agent launcher scripts (see below).
 
 ## Commands
@@ -55,6 +56,9 @@ DevLogs.cmd      # follow logs
 DevStop.cmd      # stop, keep everything
 DevDelete.cmd    # remove containers, keep images and data
 DevRemove.cmd    # remove everything, including database volumes
+
+dotnet run --project DevConsole            # same as DevConsole.cmd - this is what F5 runs
+dotnet run --project DevConsole -- status  # any script by name; args after -- pass straight through
 ```
 
 CI runs the same commands, plus `cargo nextest run --profile ci`, `cargo llvm-cov`, and `cargo deny check`.
@@ -114,6 +118,7 @@ The solution is six shared projects plus one plain folder. **Every new file must
 | `.claude/skills/…` | `AgentSkills/AgentSkills.projitems` |
 | `e2e/…` (the end-to-end crate) | `e2e/E2E.projitems` |
 | Loose repo metadata (`README.md`, `.gitignore`, launcher scripts) | `DemoRustMonoMicroservice.slnx`, in the `Solution Items` folder |
+| `DevConsole/…` (the F5 launcher) | **nothing** — it is a real SDK project and globs its own files |
 
 `AgentSkills/`, `Cargo/`, `DevEnvironment/` and `GitHub/` contain **only** a `.shproj` and a `.projitems` — no real files. They link upward with `$(MSBuildThisFileDirectory)..\…` and a `Link` attribute controlling the displayed name. The files themselves cannot move: cargo, rustup, Docker, GitHub Actions, and Claude Code each require their own fixed location. These projects are viewers, exactly like `Microservices.shproj`.
 
@@ -126,6 +131,18 @@ Adding a file is still one line:
 **Every `.rs` file must be registered in `Microservices/Microservices.projitems`** as an inert `<None Include="…" />` item. A shared project only surfaces files listed in `.projitems`, so an unregistered file is invisible in Solution Explorer. Adding or removing a Rust file is a two-step operation: change the file on disk *and* update `.projitems` in the same change. `<None>` items are never fed to the C# compiler, so this is display-only and cannot break a build.
 
 Visual Studio is a **viewer** for this code, not its build system — the `.shproj` produces no build output and the C# code-sharing targets do nothing with `.rs`. Build, test, and lint with cargo from the command line; don't route those through Visual Studio. Do not restructure or delete `.shproj` / `.projitems` for tidiness — they are the only thing making the folder openable in VS.
+
+### The one exception: `DevConsole/`
+
+`DevConsole/DevConsole.csproj` is the **only buildable project in the solution** — a small .NET 10 console app whose entire job is to find the repo root and run a `Dev*.cmd` script. Because every other project is a `.shproj` that cannot be started, Visual Studio picks this one as the startup project on its own: clone, open the solution, press **F5**, and the compose stack comes up.
+
+Consequences worth knowing before touching it:
+
+- It is an SDK-style project, so it **globs its own sources**. Do not add its files to any `.projitems` — that is the one place the "register every new file" rule does not apply.
+- It contains no orchestration logic and must not grow any. The `Dev*.cmd` scripts are the single definition of what starting the stack means; a second copy here would drift from them.
+- `Properties/launchSettings.json` gives the F5 dropdown a profile per script (Dev Start, Dev Status, Dev Logs, …). Adding a script means a line in `Program.cs`'s allow-list and a profile here.
+- `DevConsole/` is in `.dockerignore`. No image needs it, and its `bin/`+`obj/` would otherwise be sent to the daemon on all eight image builds.
+- Nothing in CI builds it; the gate is cargo-only.
 
 ## Agent launchers
 
