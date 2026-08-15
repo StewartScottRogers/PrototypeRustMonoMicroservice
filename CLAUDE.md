@@ -79,17 +79,26 @@ Continuous integration runs the same commands, plus `cargo nextest run --profile
 
 ## Team standard operating procedure — who may change what
 
-Work in this repository is divided between **one Microservice Agent Team per service crate** and **one overwatch Orchestration Agent**. The two roles have different writable scope, and the split is the point: teams move fast inside a boundary, the orchestrator owns everything that crosses one.
+Work is divided into **silos**, one team per silo, with an **Orchestration Agent** above them. Teams move fast inside a boundary; the orchestrator owns everything that crosses one, and merges.
 
-| | Microservice Agent Team | Orchestration Agent |
+| Silo | Team | May edit |
 | --- | --- | --- |
-| Owns | exactly one crate under `Microservices/` | everything shared |
-| May edit | its own `src/`, `tests/`, `Cargo.toml`, its migrations | platform crates, workspace root, compose, continuous integration, `.projitems`, `docs/`, `observability/`, `e2e/` |
-| Contracts | **consumes** them, never changes them | **sole owner** — arbitrates and versions them |
-| Tests | complete unit tests plus provider and consumer contract tests | end-to-end |
-| Branch | `team/<service-name>/<task>` | merges; teams never merge each other |
+| One service crate | `microservice-agent-team`, one per crate | its own `src/`, `tests/`, `Cargo.toml`, its migrations |
+| How it builds and runs | `platform-agent-team` | workspace root, `compose.yaml`, `Dockerfile`, `Dev*.cmd`, `DevConsole/`, every `.projitems`, `.shproj`, `.slnx` |
+| What happens after a push | `pipeline-agent-team` | `.github/**`, `release-plz.toml` |
+| What it can be asked about itself | `observability-agent-team` | `observability/**` |
+| Cross-service behaviour | `end-to-end-agent-team` | `e2e/` |
+| The contracts | **Orchestration Agent** | `messaging-core`, `db-core`, `service-core` |
 
-Full definitions: `.claude/skills/microservice-agent-team/SKILL.md` and `.claude/skills/orchestration-agent/SKILL.md`. Load the one matching the role you are in.
+Everything else the orchestrator does is administration: assigning teams, resolving collisions before work starts, routing requests between silos, and deciding merge order. It does not write the work.
+
+**Contracts are the one thing that is never siloed.** The moment two agents can both version `messaging-core`, an additive change reaches one producer and not the other, and the test pyramid below stops meaning anything.
+
+**A team is not one agent.** Up to three roles — an implementer, a test author who writes the tests *without reading the implementation*, and a critic who reads the finished diff. Scale to the task: one agent for a rename, two for ordinary work, three when a contract, a migration or the gate is involved. The default for small work is one, because fielding three on a typo costs more than the typo. The Orchestration Agent decides; its skill has the rule.
+
+Branch names are `team/<silo>/<task>`. Teams never merge each other's branches.
+
+Full definitions are in `.claude/skills/`: one file per role, named for it. Load the one matching the role you are in.
 
 ### The three-layer pyramid
 
@@ -97,7 +106,7 @@ Full definitions: `.claude/skills/microservice-agent-team/SKILL.md` and `.claude
 | --- | --- | --- |
 | **Unit** — every branch of business logic | the team | no |
 | **Contract** — provider round-trip plus consumer fixtures | the team | no |
-| **End-to-end** — cross-service choreography | the orchestrator | yes |
+| **End-to-end** — cross-service choreography | `end-to-end-agent-team` | yes |
 
 The middle layer is what lets a team ship without ever starting a sibling service: contract tests stand in for the neighbours. Consumer-side tests must tolerate **unknown fields**, because an additive contract change reaches producers before consumers and must not break them in between.
 
@@ -107,7 +116,9 @@ End-to-end tests are `#[ignore]` by default so `cargo test` stays green on a mac
 
 A team needing a new field files a request with the orchestrator, keeps working against the current contract, and gets the new version pushed to producer and consumer in the same cycle. Changes are additive by default; a breaking one increments the version, migrates the producer first, then consumers, then retires the old version.
 
-Two shared files a team may not edit but will need changed: `Microservices/Microservices.projitems` (to register a new `.rs` file) and anything under the "Orchestration Agent" column above. Put the exact line needed in the handoff note rather than editing it.
+Two shared files a service team may not edit but will need changed: `Microservices/Microservices.projitems` (to register a new `.rs` file), which belongs to the Platform Agent Team, and the contract crates, which belong to the orchestrator. Put the exact line needed in the handoff note rather than editing it.
+
+One rule that is not obvious and has already cost time here: **a green pull request does not prove a workflow that runs on a push, a tag or a schedule.** Those only run after the merge, so a change to one is not verified until somebody has watched the run that follows it, job by job rather than by the overall colour.
 
 ## Rust code is written for a Rust beginner
 
