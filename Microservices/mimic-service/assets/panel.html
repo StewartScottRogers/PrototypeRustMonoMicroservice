@@ -123,6 +123,16 @@
      twitch, not a journey. */
   .lit{stroke-width:2.8 !important;filter:brightness(1.9)}
 
+  /* The second kind of liveness, and it must not look like the first.
+     `.lit` means "a message crossed this line, milliseconds ago" — the panel
+     saw it happen, on the bus. `.absorbing` means "this was still flowing when
+     we last asked", and the last ask was up to two seconds back, derived from a
+     counter rather than witnessed.
+     Those are different claims about different evidence. A steady crawl reads
+     as a condition; a flash reads as an event. Making them identical would be
+     the first thing on this panel that is not true. */
+  .absorbing{filter:brightness(1.6)}
+
   @media (prefers-reduced-motion:no-preference){
     /* A one-second heartbeat on the live indicator, so a frozen panel is
        obvious without reading a timestamp. */
@@ -135,6 +145,19 @@
        costs no new elements at all - just an offset animation. */
     .flowing{animation:march .6s linear infinite}
     @keyframes march{to{stroke-dashoffset:-24}}
+
+    /* Four times slower than `march`, deliberately. Telemetry is a condition
+       being reported, not an event being witnessed, and the eye reads the
+       difference in speed before it reads any legend. */
+    .absorbing{animation:crawl 2.4s linear infinite}
+    @keyframes crawl{to{stroke-dashoffset:-24}}
+
+    /* The synchronous line has no dash pattern to march, so the same claim is
+       made by breathing instead - at the same 2.4 second period, so it reads as
+       the same *kind* of statement as the crawling telemetry lines even though
+       the mechanism has to differ. */
+    .line-sync.absorbing{animation:breathe 2.4s ease-in-out infinite}
+    @keyframes breathe{50%{filter:brightness(2.2)}}
   }
 </style>
 </head>
@@ -237,18 +260,38 @@
             .rd       { cursor:help; }
             .rd-box   { fill:#16232e; stroke-width:1.1; }
             .rd-val   { font-family:inherit; font-size:13px; letter-spacing:.02em; }
+            .rd-trend { font-family:inherit; font-size:9px; }
             .rd:hover .rd-box, .rd:focus .rd-box { fill:#1e3241; stroke-width:1.8; }
             .rd:focus { outline:none; }
           </style>
 
-          <!-- ============ ALARM BANNER ============ -->
-          <rect id="alarm-box" x="40" y="20" width="1136" height="52" rx="2"
+          <!-- ============ THE VERDICT ============
+               Not a list of alarms. One conclusion, and what to do about it.
+
+               A control room is not a place to do arithmetic. Five rates that
+               should match, a queue depth, a percentile and nine lamps are a
+               puzzle; somebody arriving at an alarm needs the answer first and
+               the evidence second. Everything below this banner is the
+               evidence. -->
+          <rect id="alarm-box" x="40" y="16" width="1136" height="78" rx="2"
                 fill="#0f1a14" stroke="#2fd98a" stroke-width="1.4"/>
-          <circle id="alarm-led" cx="70" cy="46" r="7" fill="#2fd98a"/>
-          <text id="alarm-title" x="96" y="51" font-size="12" fill="#2fd98a" letter-spacing="2.4">ALL CLEAR</text>
-          <line x1="212" y1="30" x2="212" y2="62" class="rule"/>
-          <text id="alarm-text" x="234" y="51" font-size="13" fill="#c7d8e4">no active alarms</text>
-          <text id="alarm-count" x="1152" y="51" font-size="11" fill="#6d8496" text-anchor="end">0 ACTIVE</text>
+          <circle id="alarm-led" cx="70" cy="40" r="7" fill="#2fd98a"/>
+          <text id="alarm-title" x="96" y="45" font-size="12" fill="#2fd98a" letter-spacing="2.4">NORMAL</text>
+          <line x1="240" y1="26" x2="240" y2="84" class="rule"/>
+          <!-- Filled with tspan lines from script. Text in scalable vector
+               graphics does not wrap, so a long sentence runs straight off the
+               end of its box and over whatever is there - which is exactly what
+               the first version of this banner did. -->
+          <text id="alarm-text" x="262" y="38" font-size="13" fill="#c7d8e4">no active alarms</text>
+          <text id="alarm-count" x="1152" y="38" font-size="11" fill="#6d8496" text-anchor="end">0 ALARMS</text>
+
+          <!-- What to do, and where it is written down. Empty when there is
+               nothing to do, because an instruction that is always on screen
+               stops being read. -->
+          <text id="verdict-action" x="262" y="84" font-size="12" fill="#ffb020"></text>
+          <a id="verdict-runbook-link" href="/runbook" target="_blank" rel="noopener noreferrer">
+            <text id="verdict-runbook" x="1152" y="84" font-size="11" fill="#34c3e0" text-anchor="end"></text>
+          </a>
 
           <!-- ================================================================
                BAND 1 — accept and store. Reads left to right.
@@ -498,25 +541,88 @@
           <path id="edge-telemetry-rail" class="line-quiet" d="M154 596 H1176"/>
           <text class="edge-lbl" x="1176" y="588" text-anchor="end">every service above reports here</text>
           <path id="edge-telemetry-prometheus" class="line-quiet" d="M232 596 V630" marker-end="url(#arrow-quiet)"/>
-          <path id="edge-telemetry-grafana" class="line-quiet" d="M478 596 V630" marker-end="url(#arrow-quiet)"/>
           <path id="edge-telemetry-jaeger" class="line-quiet" d="M724 596 V630" marker-end="url(#arrow-quiet)"/>
 
+          <!-- Grafana is not fed by the rail, and used to be drawn as though it
+               were. Nothing sends Grafana anything: it asks Prometheus, on
+               demand, when somebody opens a dashboard. An arrow pointing the
+               other way taught an operator a data path that does not exist,
+               which is worse than drawing no arrow at all. -->
+          <path id="edge-prometheus-grafana" class="line-quiet" d="M310 666 H396" marker-end="url(#arrow-quiet)"/>
+          <text class="edge-lbl" x="353" y="658" text-anchor="middle">queries</text>
+
+          <!-- The three tools carry two readings each: how much they hold, and
+               whether anything is still arriving. Neither answers the other's
+               question. A large store with no inflow is a system that stopped
+               ten minutes ago, and it reads as perfectly healthy if the only
+               number on screen is the total.
+
+               Taller than they were, because two badges on the lower edge would
+               otherwise land on the word underneath. -->
           <g class="nd" tabindex="0" data-what="prometheus">
-            <rect class="box-soft" x="154" y="634" width="156" height="52" rx="2"/>
-            <text class="name" x="232" y="659" text-anchor="middle">Prometheus</text>
-            <text class="sub"  x="232" y="676" text-anchor="middle">metrics</text>
+            <rect class="box-soft" x="154" y="634" width="156" height="64" rx="2"/>
+            <text class="name" x="232" y="657" text-anchor="middle">Prometheus</text>
+            <text class="sub"  x="232" y="673" text-anchor="middle">metrics</text>
+          </g>
+          <g class="rd" tabindex="0" role="img"
+             data-title="Series held" data-unit="active time series"
+             data-note="How many distinct measurements Prometheus is currently keeping. It grows with the number of services and the labels they carry, and it is the number that decides how much memory Prometheus needs. Shortened to fit: 4.6k means about four and a half thousand.">
+            <rect class="rd-box" id="box-g-prom-full" data-hue="#5c7382" stroke="#5c7382"
+                  x="166" y="688" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-prom-full" data-hue="#5c7382" fill="#5c7382"
+                  x="194" y="702" text-anchor="middle">&mdash;</text>
+          </g>
+          <g class="rd" tabindex="0" role="img"
+             data-title="Samples arriving" data-unit="per second"
+             data-note="How fast Prometheus is ingesting. This is the number that says the metrics pipeline is alive: a large series count with this at zero means collection stopped and everything else on this panel is going stale.">
+            <rect class="rd-box" id="box-g-prom-flow" data-hue="#5c7382" stroke="#5c7382"
+                  x="226" y="688" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-prom-flow" data-hue="#5c7382" fill="#5c7382"
+                  x="254" y="702" text-anchor="middle">&mdash;</text>
           </g>
 
           <g class="nd" tabindex="0" data-what="grafana">
-            <rect class="box-soft" x="400" y="634" width="156" height="52" rx="2"/>
-            <text class="name" x="478" y="659" text-anchor="middle">Grafana</text>
-            <text class="sub"  x="478" y="676" text-anchor="middle">dashboards</text>
+            <rect class="box-soft" x="400" y="634" width="156" height="64" rx="2"/>
+            <text class="name" x="478" y="657" text-anchor="middle">Grafana</text>
+            <text class="sub"  x="478" y="673" text-anchor="middle">dashboards</text>
+          </g>
+          <g class="rd" tabindex="0" role="img"
+             data-title="Dashboards" data-unit="provisioned"
+             data-note="How many dashboards Grafana is serving. They are loaded from files in this repository rather than from Grafana's own database, so this number changes only when somebody commits one.">
+            <rect class="rd-box" id="box-g-grafana-full" data-hue="#5c7382" stroke="#5c7382"
+                  x="412" y="688" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-grafana-full" data-hue="#5c7382" fill="#5c7382"
+                  x="440" y="702" text-anchor="middle">&mdash;</text>
+          </g>
+          <g class="rd" tabindex="0" role="img"
+             data-title="Requests served" data-unit="per second"
+             data-note="How hard Grafana is working. Unlike the other two it absorbs nothing — it answers questions, mostly by querying Prometheus, so this rises when somebody is looking at a dashboard and sits near zero when nobody is.">
+            <rect class="rd-box" id="box-g-grafana-flow" data-hue="#5c7382" stroke="#5c7382"
+                  x="472" y="688" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-grafana-flow" data-hue="#5c7382" fill="#5c7382"
+                  x="500" y="702" text-anchor="middle">&mdash;</text>
           </g>
 
           <g class="nd" tabindex="0" data-what="jaeger">
-            <rect class="box-soft" x="646" y="634" width="156" height="52" rx="2"/>
-            <text class="name" x="724" y="659" text-anchor="middle">Jaeger</text>
-            <text class="sub"  x="724" y="676" text-anchor="middle">traces</text>
+            <rect class="box-soft" x="646" y="634" width="156" height="64" rx="2"/>
+            <text class="name" x="724" y="657" text-anchor="middle">Jaeger</text>
+            <text class="sub"  x="724" y="673" text-anchor="middle">traces</text>
+          </g>
+          <g class="rd" tabindex="0" role="img"
+             data-title="Spans stored" data-unit="spans"
+             data-note="How many individual steps Jaeger is holding. Storage here is in memory only, so this resets to nothing every time Jaeger restarts — worth knowing before relying on it to investigate something from this morning.">
+            <rect class="rd-box" id="box-g-jaeger-full" data-hue="#5c7382" stroke="#5c7382"
+                  x="658" y="688" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-jaeger-full" data-hue="#5c7382" fill="#5c7382"
+                  x="686" y="702" text-anchor="middle">&mdash;</text>
+          </g>
+          <g class="rd" tabindex="0" role="img"
+             data-title="Spans arriving" data-unit="per second"
+             data-note="How fast traces are being recorded. Zero while orders are flowing means the tracing pipeline has stopped even though the system has not, and every trace you go looking for later will be missing.">
+            <rect class="rd-box" id="box-g-jaeger-flow" data-hue="#5c7382" stroke="#5c7382"
+                  x="718" y="688" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-jaeger-flow" data-hue="#5c7382" fill="#5c7382"
+                  x="746" y="702" text-anchor="middle">&mdash;</text>
           </g>
 
           <!-- ================================================================
@@ -529,27 +635,33 @@
                it costs the drawing nothing and the canvas is a fifth narrower,
                so every box on it is drawn larger at the same screen size.
                ================================================================ -->
-          <text class="band" x="884" y="640">KEY</text>
+          <text class="band" x="884" y="636">KEY</text>
 
-          <path class="line-sync" d="M884 660 H922" marker-end="url(#arrow-sync)"/>
-          <text class="sub" x="934" y="664">synchronous call</text>
-          <path class="line-async" d="M884 682 H922" marker-end="url(#arrow-async)"/>
-          <text class="sub" x="934" y="686">message or event</text>
-          <path class="line-quiet" d="M884 704 H922"/>
-          <text class="sub" x="934" y="708">telemetry</text>
+          <path class="line-sync" d="M884 654 H922" marker-end="url(#arrow-sync)"/>
+          <text class="sub" x="934" y="658">synchronous call</text>
+          <path class="line-async" d="M884 674 H922" marker-end="url(#arrow-async)"/>
+          <text class="sub" x="934" y="678">message or event</text>
+          <path class="line-quiet" d="M884 694 H922"/>
+          <text class="sub" x="934" y="698">telemetry</text>
+          <path class="line-quiet absorbing" d="M884 714 H922"/>
+          <text class="sub" x="934" y="718">telemetry, still flowing</text>
 
-          <circle cx="890" cy="726" r="5" fill="#2fd98a"/>
-          <text class="sub" x="904" y="730">healthy</text>
-          <circle cx="964" cy="726" r="5" fill="#ffb020"/>
-          <text class="sub" x="978" y="730">degraded</text>
-          <circle cx="1048" cy="726" r="5" fill="#ff4a4a"/>
-          <text class="sub" x="1062" y="730">down</text>
+          <circle cx="890" cy="738" r="5" fill="#2fd98a"/>
+          <text class="sub" x="904" y="742">healthy</text>
+          <circle cx="964" cy="738" r="5" fill="#ffb020"/>
+          <text class="sub" x="978" y="742">degraded</text>
+          <circle cx="1048" cy="738" r="5" fill="#ff4a4a"/>
+          <text class="sub" x="1062" y="742">down</text>
 
           <!-- The honest reading of every animation on this page. It belongs
                here rather than only in the walkthrough, because someone
-               watching a line light up is not reading the walkthrough. -->
-          <text class="read-unt" x="884" y="752">a lit line means a message was sent along it</text>
-          <text class="read-unt" x="884" y="768">pause the pointer on a number to see what it counts</text>
+               watching a line light up is not reading the walkthrough.
+               The distinction in the second line is the one that matters most:
+               a flash is something the panel *saw*, a crawl is something it was
+               *told* about a second or two ago. -->
+          <text class="read-unt" x="884" y="762">a flash means a message crossed just now</text>
+          <text class="read-unt" x="884" y="777">a slow crawl means a counter was still rising when last asked</text>
+          <text class="read-unt" x="884" y="792">pause the pointer on anything to see what it is</text>
         </svg>
       </figure>
       <figcaption>
@@ -606,6 +718,26 @@
   // simultaneity is the whole difference between eventing and messaging.
   const EVENT_EDGES = ["edge-worker-events", "edge-events-notifier", "edge-events-audit"];
   const DEAD_LETTER_EDGES = ["edge-worker-deadletter"];
+  // The worker claims an idempotency key in Redis for *every* command it takes,
+  // so when the tap sees a command that claim genuinely happened. Same
+  // inference the staggered path above already makes, and the reason this line
+  // can flash on the bus rather than waiting for a counter.
+  const REDIS_EDGES = ["edge-worker-redis"];
+
+  // Which reading says each telemetry line is carrying anything. These are
+  // rates from Prometheus, reconciled every couple of seconds — not events seen
+  // on the bus — which is why they drive a slow crawl rather than a flash.
+  const ABSORBING = [
+    { edge: "edge-telemetry-rail", reading: "g-prom-flow" },
+    { edge: "edge-telemetry-prometheus", reading: "g-prom-flow" },
+    { edge: "edge-telemetry-jaeger", reading: "g-jaeger-flow" },
+    { edge: "edge-prometheus-grafana", reading: "g-grafana-flow" },
+    // The synchronous call to the echo service. It crosses no message bus, so
+    // the tap is blind to it and a counter is the only evidence available -
+    // which puts it in this list rather than among the flashing lines, even
+    // though it is a request and reply rather than telemetry.
+    { edge: "edge-gateway-echo", reading: "g-echo-flow" },
+  ];
   // The two longest lines on the drawing, and the two that carry the lesson, so
   // they are the two that get a travelling dot rather than only a flash.
   const DOTTED_EDGES = ["edge-events-notifier", "edge-events-audit"];
@@ -659,10 +791,126 @@
       if (badge) {
         badge.setAttribute("stroke", reading.warn ? COLOURS.degraded : badge.getAttribute("data-hue"));
       }
+
+      paintTrend(reading);
     }
+    showAbsorbing(gauges);
+
     // A reading on screen inside the hover panel has just gone stale. Only a
     // reading: a box's description does not change when a number does.
     if (openTarget && openTarget.classList.contains("rd")) fillTip(openTarget);
+  }
+
+  /// Breaks a sentence across lines inside one text element.
+  ///
+  /// Text in scalable vector graphics does not wrap. A long sentence runs
+  /// straight off the end of its box and over whatever is beside it, which is
+  /// what the first version of this banner did to the alarm count.
+  ///
+  /// Breaking on a character budget rather than by measuring is exact here:
+  /// this panel is set in a monospace face, so every character is the same
+  /// width and the budget is arithmetic rather than a guess.
+  function wrapInto(element, sentence, perLine, x, firstY, lineHeight) {
+    element.textContent = "";
+
+    const words = sentence.split(" ");
+    const lines = [];
+    let line = "";
+
+    for (const word of words) {
+      if (line && (line + " " + word).length > perLine) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = line ? line + " " + word : word;
+      }
+    }
+    if (line) lines.push(line);
+
+    const namespace = "http://www.w3.org/2000/svg";
+    lines.forEach((content, index) => {
+      const span = document.createElementNS(namespace, "tspan");
+      span.setAttribute("x", x);
+      span.setAttribute("y", firstY + index * lineHeight);
+      span.textContent = content;
+      element.appendChild(span);
+    });
+  }
+
+  /// Paints the one conclusion, and what to do about it.
+  ///
+  /// The alarm count stays, in small text on the right: the verdict is the
+  /// headline, and the count is how much else is going on behind it.
+  function paintVerdict(verdict, alarms) {
+    const hue = COLOURS[verdict.level] || COLOURS.unknown;
+    const box = byId("alarm-box"), lamp = byId("alarm-led"),
+          title = byId("alarm-title"), text = byId("alarm-text"),
+          count = byId("alarm-count"), action = byId("verdict-action"),
+          runbook = byId("verdict-runbook"), link = byId("verdict-runbook-link");
+
+    box.setAttribute("stroke", hue);
+    box.setAttribute("fill", ALARM_GROUND[verdict.level] || ALARM_GROUND.degraded);
+    lamp.setAttribute("fill", hue);
+    title.setAttribute("fill", hue);
+    title.textContent = verdict.headline.toUpperCase();
+    wrapInto(text, verdict.detail, 104, 262, 38, 16);
+    text.setAttribute("fill", verdict.level === "healthy" ? "#c7d8e4" : "#e6eef4");
+
+    action.textContent = verdict.action;
+    action.setAttribute("fill", hue);
+
+    // The link is only useful when it goes somewhere specific. A permanent
+    // "see the runbook" is furniture, and furniture is not read.
+    if (verdict.runbook) {
+      runbook.textContent = "runbook: " + verdict.runbook + " ↗";
+      link.setAttribute("href", "/runbook#" + verdict.runbook);
+    } else {
+      runbook.textContent = "";
+    }
+
+    count.textContent = alarms.length + (alarms.length === 1 ? " ALARM" : " ALARMS");
+  }
+
+  // Which way a reading moved, as one character.
+  //
+  // A single number cannot say whether something is failing or recovering, and
+  // that is the whole difference between "watch it" and "act now". Nothing is
+  // drawn for steady or unknown: a mark that is always present carries no
+  // information, and an unknown direction must not be drawn as a steady one.
+  const TREND_MARK = { rising: "▲", falling: "▼", steady: "", unknown: "" };
+
+  /// Creates the mark for a reading the first time it is needed.
+  ///
+  /// Built here rather than written into the drawing fourteen times, so a new
+  /// reading gets its arrow by existing rather than by somebody remembering.
+  function trendMark(readingId) {
+    const existing = byId("trend-" + readingId);
+    if (existing) return existing;
+
+    const box = byId("box-" + readingId);
+    if (!box) return null;
+
+    const namespace = "http://www.w3.org/2000/svg";
+    const mark = document.createElementNS(namespace, "text");
+    mark.setAttribute("id", "trend-" + readingId);
+    mark.setAttribute("class", "rd-trend");
+    // Just outside the badge's right edge, vertically centred on it.
+    mark.setAttribute("x", Number(box.getAttribute("x")) + Number(box.getAttribute("width")) + 4);
+    mark.setAttribute("y", Number(box.getAttribute("y")) + 14);
+    mark.setAttribute("aria-hidden", "true");
+    box.parentNode.appendChild(mark);
+    return mark;
+  }
+
+  function paintTrend(reading) {
+    const mark = trendMark(reading.id);
+    if (!mark) return;
+
+    mark.textContent = TREND_MARK[reading.trend] || "";
+    // Rising is not good or bad on its own — a rising throughput is healthy and
+    // a rising queue is not — so the mark takes the reading's own colour and
+    // says only which way, never whether.
+    mark.setAttribute("fill", reading.warn ? COLOURS.degraded : "#5c7382");
   }
 
   function paintAlarms(alarms) {
@@ -702,7 +950,14 @@
   function paint(state) {
     paintNodes(state.nodes);
     paintGauges(state.gauges);
-    paintAlarms(state.alarms);
+    // The verdict replaces the alarm banner when the service sends one. The
+    // fallback keeps an older service working rather than blanking the banner,
+    // which is the same tolerance the consumer contract tests require.
+    if (state.verdict) {
+      paintVerdict(state.verdict, state.alarms);
+    } else {
+      paintAlarms(state.alarms);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -793,6 +1048,35 @@
     DEAD_LETTER_EDGES.forEach((edgeId) => {
       if (touched.has(edgeId)) light(edgeId);
     });
+
+    // Lit at the end of the staggered path, because that is when it happens:
+    // the worker claims the key as it takes the command, not before.
+    if (touched.has("edge-commands-worker")) {
+      REDIS_EDGES.forEach((edgeId) => {
+        window.setTimeout(() => light(edgeId), COMMAND_EDGES.length * STAGGER_MILLISECONDS);
+      });
+    }
+  }
+
+  /// Marks the telemetry lines that are carrying something.
+  ///
+  /// Driven by readings rather than by events, so it is a state that is turned
+  /// on and left on while the rate is above zero - not a flash that decays. A
+  /// line that stops crawling means collection stopped, which is a thing an
+  /// operator needs to see without reading a number.
+  function showAbsorbing(gauges) {
+    if (!motionAllowed) return;
+
+    for (const { edge, reading } of ABSORBING) {
+      const line = byId(edge);
+      const value = gauges.find((gauge) => gauge.id === reading);
+      if (!line || !value) continue;
+
+      // The em dash is the panel's "no reading" mark. Unknown is not zero, and
+      // must not be drawn as a confident "nothing is flowing".
+      const flowing = value.value !== "—" && Number.parseFloat(value.value) > 0;
+      line.classList.toggle("absorbing", flowing);
+    }
   }
 
   // ===========================================================================

@@ -21,6 +21,197 @@ const LATENCY_WARN_SECONDS: f64 = 0.4;
 /// Unprocessed messages waiting on a consumer before it counts as backed up.
 const QUEUE_WARN_DEPTH: u64 = 100;
 
+/// How far below its upstream a stage may sit before it counts as behind.
+///
+/// Nothing measured across separate scrapes is ever exactly equal, so a small
+/// shortfall is noise. Ten per cent is wide enough to ignore that and narrow
+/// enough to catch a stage that is genuinely not keeping up.
+const CONTINUITY_TOLERANCE: f64 = 0.9;
+
+/// And an absolute floor, because a percentage is meaningless at low rates.
+///
+/// At one order a second, "ten per cent behind" is a tenth of an order — well
+/// inside the rounding of two scrapes taken a moment apart. Without this the
+/// panel would cry wolf on every idle system, which is the fastest way to teach
+/// somebody to ignore it.
+const CONTINUITY_FLOOR: f64 = 0.5;
+
+/// How much a reading must move before it counts as moving at all.
+const TREND_TOLERANCE: f64 = 0.05;
+
+/// The chain, in order, and what each stage is called in a sentence.
+///
+/// This is the conservation law the whole diagnosis rests on: every order
+/// accepted must be relayed, every relayed order processed, and every processed
+/// order reacted to by both subscribers. In steady state these five numbers are
+/// the same number. Where they stop being the same is where the fault is.
+const CHAIN: [&str; 5] = [
+    "the gateway",
+    "the outbox relay",
+    "the worker",
+    "the notifier",
+    "the audit service",
+];
+
+/// Finds the first stage that is not keeping up with the one before it.
+///
+/// Returns the index of the *downstream* stage and how far behind it is.
+///
+/// The **first** one, walking downstream, because gaps cascade: if the relay
+/// has stalled then the worker, notifier and audit service are all starved as
+/// well, and reporting four faults where there is one sends somebody to look in
+/// three wrong places.
+///
+/// `None` when everything keeps up, when the chain is idle, or when any reading
+/// is missing — an unknown is not a fault, and must not be reported as one.
+fn first_stage_behind(rates: &[Option<f64>; 5]) -> Option<(usize, f64)> {
+    for index in 1..rates.len() {
+        let (Some(upstream), Some(downstream)) = (rates[index - 1], rates[index]) else {
+            return None;
+        };
+
+        let shortfall = upstream - downstream;
+
+        if downstream < upstream * CONTINUITY_TOLERANCE && shortfall > CONTINUITY_FLOOR {
+            return Some((index, shortfall));
+        }
+    }
+
+    None
+}
+
+/// Reads all the evidence and reaches one conclusion.
+///
+/// A pure function of plain values, deliberately: it is the only part of this
+/// service where being wrong is quietly dangerous, so it is the part that has
+/// to be exhaustively testable without a broker, a database or a clock.
+///
+/// The order of the checks is the ranking. It runs most-certain first and
+/// most-specific before most-general, because an operator acts on the first
+/// sentence they read:
+///
+/// 1. Nothing can be concluded at all.
+/// 2. Something is down — no diagnosis needed, it is stated.
+/// 3. A stage is behind — the most specific thing this panel can say, and it
+///    names one component rather than a symptom.
+/// 4. Something is degraded but the chain still balances.
+/// 5. Messages are parked. Nothing is failing now, but work has been lost and
+///    nothing will recover it without a person.
+/// 6. Normal.
+fn decide(
+    sources_ok: bool,
+    worst_node: Status,
+    behind: Option<(usize, f64)>,
+    dead_letters: Option<u64>,
+) -> Verdict {
+    // Rule one, and it outranks everything: if the measurements are not
+    // arriving, every other conclusion on this page is about a stale picture.
+    // "Everything looks fine" is the single most dangerous thing a panel can
+    // say when it has stopped being told anything.
+    if !sources_ok {
+        return Verdict {
+            level: Status::Unknown,
+            headline: "Cannot tell".to_owned(),
+            detail: "Prometheus is not answering, so every reading on this page \
+                     is the last one that arrived rather than the current one."
+                .to_owned(),
+            action: "Check that Prometheus is running before trusting anything below.".to_owned(),
+            runbook: "sources".to_owned(),
+        };
+    }
+
+    if worst_node == Status::Down {
+        return Verdict {
+            level: Status::Down,
+            headline: "Down".to_owned(),
+            detail: "A component is not answering. Its lamp is red below.".to_owned(),
+            action: "Find the red lamp, then read its container's logs.".to_owned(),
+            runbook: "down".to_owned(),
+        };
+    }
+
+    if let Some((index, shortfall)) = behind {
+        let stage = CHAIN[index];
+        let upstream = CHAIN[index - 1];
+
+        return Verdict {
+            level: Status::Degraded,
+            headline: "Falling behind".to_owned(),
+            detail: format!(
+                "{stage} is not keeping up with {upstream} — about {shortfall:.1} orders a \
+                 second are going in that are not coming out. Every stage before it is fine, \
+                 so the fault is there rather than upstream."
+            ),
+            action: format!("Read the logs for {stage}, and check whether its queue is growing."),
+            runbook: "behind".to_owned(),
+        };
+    }
+
+    if worst_node == Status::Degraded {
+        return Verdict {
+            level: Status::Degraded,
+            headline: "Degraded".to_owned(),
+            detail: "Everything is still flowing and the chain balances, but a component \
+                     is reporting trouble — an amber lamp below says which."
+                .to_owned(),
+            action: "Read the amber lamp's detail line; it says what tripped it.".to_owned(),
+            runbook: "degraded".to_owned(),
+        };
+    }
+
+    if let Some(parked) = dead_letters.filter(|count| *count > 0) {
+        return Verdict {
+            level: Status::Degraded,
+            headline: "Work is parked".to_owned(),
+            detail: format!(
+                "The chain is flowing normally, but {parked} messages failed three times \
+                 and were set aside. They are not being retried, and nothing will pick \
+                 them up on its own."
+            ),
+            action: "Run DevReplay.cmd --dry-run to see what would come back.".to_owned(),
+            runbook: "parked".to_owned(),
+        };
+    }
+
+    Verdict {
+        level: Status::Healthy,
+        headline: "Normal".to_owned(),
+        detail: "Every component is answering, and every order accepted is being relayed, \
+                 processed and reacted to at the same rate."
+            .to_owned(),
+        action: String::new(),
+        runbook: String::new(),
+    }
+}
+
+/// Which way a reading moved, given the one before it.
+///
+/// Proportional rather than absolute, because the same rule has to serve a rate
+/// of 7 a second and a store of 226,000 spans. A fixed threshold would call
+/// every rate steady or every count volatile.
+pub fn trend_between(previous: Option<f64>, current: f64) -> Trend {
+    let Some(previous) = previous else {
+        return Trend::Unknown;
+    };
+
+    // Against the larger of the two, so a fall to zero is measured against
+    // where it fell from rather than against nothing.
+    let scale = previous.abs().max(current.abs());
+    if scale == 0.0 {
+        return Trend::Steady;
+    }
+
+    let change = (current - previous) / scale;
+
+    if change > TREND_TOLERANCE {
+        Trend::Rising
+    } else if change < -TREND_TOLERANCE {
+        Trend::Falling
+    } else {
+        Trend::Steady
+    }
+}
+
 /// How recently a target must have been scraped to count as present.
 ///
 /// Comfortably longer than the 2-second scrape interval, so an ordinary missed
@@ -55,6 +246,25 @@ pub struct Node {
     pub detail: String,
 }
 
+/// Which way a reading has moved since the one before it.
+///
+/// A single number cannot say whether a system is failing or recovering, and
+/// that is the difference between "watch it" and "do something now". Two
+/// readings can.
+///
+/// `Unknown` is not `Steady`. It means there is nothing to compare against —
+/// the first reading after a restart, or a value that is not a number — and
+/// drawing that as "steady" would be a confident claim about a measurement
+/// that was never made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Trend {
+    Rising,
+    Steady,
+    Falling,
+    Unknown,
+}
+
 /// One reading in the instrument column.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Gauge {
@@ -62,6 +272,29 @@ pub struct Gauge {
     pub value: String,
     /// Draws the badge in warning colour when true.
     pub warn: bool,
+    /// Which way it moved since the previous reading.
+    pub trend: Trend,
+}
+
+/// What an operator should conclude, right now, in one sentence.
+///
+/// Everything else on this panel is evidence. This is the reading of it.
+///
+/// It exists because a control room is not a place to do arithmetic. Five rates
+/// that should match, a queue depth, a percentile and nine lamps are a puzzle;
+/// somebody arriving at an alarm needs the answer, and then the evidence to
+/// check it against — not the other way round.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Verdict {
+    pub level: Status,
+    /// One or two words, large: "Normal", "Degraded", "Cannot tell".
+    pub headline: String,
+    /// One sentence on what is true.
+    pub detail: String,
+    /// One sentence on what to do about it. Empty when there is nothing to do.
+    pub action: String,
+    /// Anchor in the runbook page that covers this, or empty.
+    pub runbook: String,
 }
 
 /// Something worth putting in the banner.
@@ -83,6 +316,8 @@ pub struct Snapshot {
     pub nodes: Vec<Node>,
     pub gauges: Vec<Gauge>,
     pub alarms: Vec<Alarm>,
+    /// The one-sentence reading of everything above.
+    pub verdict: Verdict,
     /// True when Prometheus answered. The panel says so rather than pretending
     /// a stale picture is current.
     pub sources_ok: bool,
@@ -176,6 +411,18 @@ pub struct Collector {
     client: reqwest::Client,
     prometheus_url: String,
     nats_monitor_url: String,
+    /// The previous numeric value of every reading, so each one can say which
+    /// way it moved.
+    ///
+    /// `Arc<Mutex<…>>` rather than a plain field because this type derives
+    /// `Clone` and every clone must share the same memory — a per-clone copy
+    /// would mean each caller comparing against its own private history and
+    /// every reading reporting `Unknown` forever.
+    ///
+    /// A `Mutex` and not a channel or an atomic: the lock is held for a map
+    /// lookup and an insert, with no `.await` anywhere inside it, which is the
+    /// condition that makes a blocking lock safe in asynchronous code.
+    previous: std::sync::Arc<std::sync::Mutex<BTreeMap<String, f64>>>,
 }
 
 impl Collector {
@@ -199,7 +446,27 @@ impl Collector {
                 .unwrap_or_default(),
             prometheus_url,
             nats_monitor_url,
+            previous: std::sync::Arc::new(std::sync::Mutex::new(BTreeMap::new())),
         }
+    }
+
+    /// Records a reading and says which way it moved since the last one.
+    ///
+    /// A poisoned lock — one whose holder panicked — is treated as "no history"
+    /// rather than propagated. Losing the direction of an arrow is not worth
+    /// taking the panel down for, and the next reading repairs it.
+    fn trend_for(&self, id: &str, current: Option<f64>) -> Trend {
+        let Some(current) = current else {
+            return Trend::Unknown;
+        };
+
+        let Ok(mut previous) = self.previous.lock() else {
+            return Trend::Unknown;
+        };
+
+        let trend = trend_between(previous.get(id).copied(), current);
+        previous.insert(id.to_owned(), current);
+        trend
     }
 
     /// Runs one instant query and returns the first sample's value.
@@ -503,23 +770,25 @@ impl Collector {
         // counts. So the wording still lives in the panel rather than here —
         // just in `data-title`, `data-unit` and `data-note` on the badge rather
         // than in a label beside a tile.
+        // The five stages of the chain, read once. They are drawn as badges and
+        // also compared against each other, and reading them twice would let
+        // the picture and the diagnosis disagree about the same number.
+        let chain = [
+            self.scalar("sum(rate(orders_accepted_total[15s]))").await,
+            self.scalar("sum(rate(outbox_relayed_total[15s]))").await,
+            self.scalar("sum(rate(orders_processed_total[15s]))").await,
+            self.scalar("sum(rate(events_handled_total{service=\"notifier-service\"}[15s]))")
+                .await,
+            self.scalar("sum(rate(events_handled_total{service=\"audit-service\"}[15s]))")
+                .await,
+        ];
+
         let gauges = vec![
-            self.rate_gauge("g-accepted", "sum(rate(orders_accepted_total[15s]))")
-                .await,
-            self.rate_gauge("g-relayed", "sum(rate(outbox_relayed_total[15s]))")
-                .await,
-            self.rate_gauge("g-processed", "sum(rate(orders_processed_total[15s]))")
-                .await,
-            self.rate_gauge(
-                "g-notified",
-                "sum(rate(events_handled_total{service=\"notifier-service\"}[15s]))",
-            )
-            .await,
-            self.rate_gauge(
-                "g-audited",
-                "sum(rate(events_handled_total{service=\"audit-service\"}[15s]))",
-            )
-            .await,
+            self.rate_gauge_of("g-accepted", chain[0]),
+            self.rate_gauge_of("g-relayed", chain[1]),
+            self.rate_gauge_of("g-processed", chain[2]),
+            self.rate_gauge_of("g-notified", chain[3]),
+            self.rate_gauge_of("g-audited", chain[4]),
             // The em dash is the "no reading" mark used everywhere on this
             // panel. It is not a zero, and the difference matters most exactly
             // when the broker is the thing that has gone wrong.
@@ -527,11 +796,13 @@ impl Collector {
                 id: "g-queue".to_owned(),
                 value: worker_backlog.map_or_else(|| "—".to_owned(), |depth| depth.to_string()),
                 warn: worker_backlog.is_some_and(|depth| depth > QUEUE_WARN_DEPTH),
+                trend: self.trend_for("g-queue", worker_backlog.map(|depth| depth as f64)),
             },
             Gauge {
                 id: "g-dlq".to_owned(),
                 value: dead_letters.map_or_else(|| "—".to_owned(), |count| count.to_string()),
                 warn: dead_letters.is_some_and(|count| count > 0),
+                trend: self.trend_for("g-dlq", dead_letters.map(|count| count as f64)),
             },
             Gauge {
                 id: "g-p99".to_owned(),
@@ -540,15 +811,122 @@ impl Collector {
                     None => "—".to_owned(),
                 },
                 warn: p99.is_some_and(|seconds| seconds > LATENCY_WARN_SECONDS),
+                trend: self.trend_for("g-p99", p99),
             },
+            // ---- the three tools, two readings each ----
+            //
+            // Until now these were drawn on the panel with no numbers at all,
+            // which left an operator asking "is the tracing still recording?"
+            // with nowhere to look. Each gets a *stock* and a *flow*: how much
+            // it holds, and whether anything is still arriving. Neither answers
+            // the other's question — a large store with no inflow is a system
+            // that stopped ten minutes ago, and reads as healthy if you only
+            // look at the total.
+            self.count_gauge("g-prom-full", "prometheus_tsdb_head_series")
+                .await,
+            self.rate_gauge(
+                "g-prom-flow",
+                "rate(prometheus_tsdb_head_samples_appended_total[1m])",
+            )
+            .await,
+            // Not `spans_received_total`, which stays at zero forever here:
+            // spans arrive over OpenTelemetry Protocol and are counted as
+            // saved, not received. Measured on the running stack — the received
+            // counter read 0 while 225,035 spans were sitting in storage.
+            self.count_gauge(
+                "g-jaeger-full",
+                "sum(jaeger_collector_spans_saved_by_svc_total)",
+            )
+            .await,
+            self.rate_gauge(
+                "g-jaeger-flow",
+                "sum(rate(jaeger_collector_spans_saved_by_svc_total[1m]))",
+            )
+            .await,
+            // The synchronous path. It crosses no message bus, so the tap
+            // cannot see it and this counter is the only evidence the panel can
+            // have that the call still works.
+            self.rate_gauge("g-echo-flow", "sum(rate(relay_calls_total[15s]))")
+                .await,
+            self.count_gauge("g-grafana-full", "grafana_stat_totals_dashboard")
+                .await,
+            self.rate_gauge(
+                "g-grafana-flow",
+                "sum(rate(grafana_http_request_duration_seconds_count[1m]))",
+            )
+            .await,
         ];
+
+        // The reading of everything above. Computed from the worst lamp rather
+        // than from any single one, so a component that is down cannot be
+        // hidden by eight that are fine.
+        let worst_node = nodes
+            .iter()
+            .map(|node| node.status)
+            .max_by_key(|status| match status {
+                Status::Healthy => 0,
+                Status::Unknown => 1,
+                Status::Degraded => 2,
+                Status::Down => 3,
+            })
+            .unwrap_or(Status::Unknown);
+
+        let verdict = decide(
+            sources_ok,
+            worst_node,
+            first_stage_behind(&chain),
+            dead_letters,
+        );
 
         Snapshot {
             generated_at: Utc::now(),
             nodes,
             gauges,
+            verdict,
             alarms,
             sources_ok,
+        }
+    }
+
+    /// A whole-number count, shortened so it fits the badge on the drawing.
+    ///
+    /// 4579 becomes `4.6k` and 225035 becomes `225k`. The badge is 56 units
+    /// wide and holds about five characters, so an unshortened count would
+    /// either overflow its box or force every badge on the panel to be sized
+    /// for the widest number any of them might ever reach.
+    ///
+    /// Shortening is a display decision, not a measurement one: the exact value
+    /// is a Prometheus query away, and an operator reading "how full is it"
+    /// wants the magnitude rather than the units digit.
+    async fn count_gauge(&self, id: &str, query: &str) -> Gauge {
+        let raw = self.scalar(query).await;
+
+        Gauge {
+            id: id.to_owned(),
+            value: match raw {
+                Some(count) => Self::compact(count),
+                None => "—".to_owned(),
+            },
+            warn: false,
+            trend: self.trend_for(id, raw),
+        }
+    }
+
+    /// Shortens a count to at most five characters.
+    ///
+    /// `f64` rather than an integer type because that is what the Prometheus
+    /// programming interface returns for every value, counts included.
+    fn compact(count: f64) -> String {
+        if count < 1_000.0 {
+            format!("{count:.0}")
+        } else if count < 10_000.0 {
+            // One decimal below ten thousand, where the difference between
+            // 4.6k and 4.9k is still worth seeing.
+            format!("{:.1}k", count / 1_000.0)
+        } else if count < 1_000_000.0 {
+            format!("{:.0}k", count / 1_000.0)
+        } else {
+            format!("{:.1}M", count / 1_000_000.0)
         }
     }
 
@@ -558,15 +936,26 @@ impl Collector {
     /// and "a reading of zero" mean different things, and a panel that shows
     /// 0.00 for a target it cannot reach is lying quietly.
     async fn rate_gauge(&self, id: &str, query: &str) -> Gauge {
-        let value = match self.scalar(query).await {
-            Some(rate) => format!("{rate:.2}"),
-            None => "—".to_owned(),
-        };
+        let raw = self.scalar(query).await;
+        self.rate_gauge_of(id, raw)
+    }
 
+    /// The same, from a value already measured.
+    ///
+    /// The five rates along the chain are read once and used twice — drawn as
+    /// badges, and compared against each other for the continuity check — so
+    /// they are fetched separately and handed here rather than queried again.
+    /// Querying twice would risk the badge and the diagnosis disagreeing about
+    /// the same number.
+    fn rate_gauge_of(&self, id: &str, raw: Option<f64>) -> Gauge {
         Gauge {
             id: id.to_owned(),
-            value,
+            value: match raw {
+                Some(rate) => format!("{rate:.2}"),
+                None => "—".to_owned(),
+            },
             warn: false,
+            trend: self.trend_for(id, raw),
         }
     }
 }
@@ -673,6 +1062,168 @@ mod tests {
         assert!(classify_worker_health(None, QUEUE_WARN_DEPTH + 1).is_some());
     }
 
+    /// Five rates that all match, at a rate worth measuring.
+    fn balanced() -> [Option<f64>; 5] {
+        [Some(7.0), Some(7.0), Some(7.0), Some(7.0), Some(7.0)]
+    }
+
+    #[test]
+    fn a_balanced_chain_has_no_fault() {
+        assert_eq!(first_stage_behind(&balanced()), None);
+
+        // Idle is balanced too. A system doing nothing is not a system failing.
+        assert_eq!(first_stage_behind(&[Some(0.0); 5]), None);
+    }
+
+    #[test]
+    fn a_missing_reading_is_never_reported_as_a_fault() {
+        // An unknown is not a shortfall, and saying "the worker is behind"
+        // because a number failed to arrive would send somebody to read the
+        // logs of a service that is working perfectly.
+        let mut rates = balanced();
+        rates[2] = None;
+        assert_eq!(first_stage_behind(&rates), None);
+    }
+
+    #[test]
+    fn the_first_stage_behind_is_the_one_reported() {
+        // The relay has stalled, so everything downstream is starved as well.
+        // Only the relay should be named: reporting four faults where there is
+        // one sends somebody to look in three wrong places.
+        let rates = [Some(7.0), Some(1.0), Some(1.0), Some(1.0), Some(1.0)];
+        let (index, shortfall) = first_stage_behind(&rates).expect("a fault");
+        assert_eq!(CHAIN[index], "the outbox relay");
+        assert!((shortfall - 6.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn small_gaps_at_low_rates_are_not_faults() {
+        // Half an order a second between two scrapes is measurement noise, not
+        // a stalled service. Without the floor the panel cries wolf whenever
+        // the system is nearly idle, which is most of the time.
+        assert_eq!(
+            first_stage_behind(&[Some(1.0), Some(0.6), Some(0.6), Some(0.6), Some(0.6)]),
+            None
+        );
+
+        // The same *proportional* gap at a rate worth measuring is real.
+        assert!(
+            first_stage_behind(&[Some(50.0), Some(30.0), Some(30.0), Some(30.0), Some(30.0)])
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn unreachable_sources_outrank_every_other_conclusion() {
+        // Even with everything else looking catastrophic, the honest answer is
+        // that nothing can be concluded — the readings are not arriving.
+        let verdict = decide(false, Status::Down, Some((1, 9.0)), Some(500));
+        assert_eq!(verdict.level, Status::Unknown);
+        assert_eq!(verdict.headline, "Cannot tell");
+    }
+
+    #[test]
+    fn a_stage_behind_is_named_ahead_of_a_general_degradation() {
+        // Both are true. The specific one is more useful, so it is the one an
+        // operator reads first.
+        let verdict = decide(true, Status::Degraded, Some((2, 4.0)), Some(0));
+        assert_eq!(verdict.headline, "Falling behind");
+        assert!(verdict.detail.contains("the worker"));
+        assert!(verdict.detail.contains("the outbox relay"));
+        assert_eq!(verdict.runbook, "behind");
+    }
+
+    #[test]
+    fn parked_work_is_reported_even_when_everything_flows() {
+        let verdict = decide(true, Status::Healthy, None, Some(1_714));
+        assert_eq!(verdict.level, Status::Degraded);
+        assert!(verdict.detail.contains("1714"));
+        assert!(!verdict.action.is_empty(), "a person has to do something");
+    }
+
+    #[test]
+    fn a_healthy_system_says_so_and_asks_for_nothing() {
+        let verdict = decide(true, Status::Healthy, None, Some(0));
+        assert_eq!(verdict.level, Status::Healthy);
+        assert_eq!(verdict.headline, "Normal");
+        assert!(verdict.action.is_empty());
+        assert!(verdict.runbook.is_empty());
+    }
+
+    #[test]
+    fn every_verdict_that_reports_trouble_says_what_to_do() {
+        // The whole point of the verdict. A conclusion with no next step is a
+        // worry rather than an instruction, and a control room runs on
+        // instructions.
+        for verdict in [
+            decide(false, Status::Healthy, None, Some(0)),
+            decide(true, Status::Down, None, Some(0)),
+            decide(true, Status::Healthy, Some((1, 5.0)), Some(0)),
+            decide(true, Status::Degraded, None, Some(0)),
+            decide(true, Status::Healthy, None, Some(1)),
+        ] {
+            assert_ne!(verdict.level, Status::Healthy);
+            assert!(
+                !verdict.action.is_empty(),
+                "{} has no action",
+                verdict.headline
+            );
+            assert!(
+                !verdict.runbook.is_empty(),
+                "{} has no runbook",
+                verdict.headline
+            );
+        }
+    }
+
+    #[test]
+    fn a_reading_reports_which_way_it_moved() {
+        assert_eq!(trend_between(None, 7.0), Trend::Unknown);
+        assert_eq!(trend_between(Some(7.0), 7.0), Trend::Steady);
+        assert_eq!(trend_between(Some(7.0), 9.0), Trend::Rising);
+        assert_eq!(trend_between(Some(9.0), 7.0), Trend::Falling);
+
+        // Both zero is steady, not a division by zero.
+        assert_eq!(trend_between(Some(0.0), 0.0), Trend::Steady);
+
+        // A one per cent wobble is not a movement.
+        assert_eq!(trend_between(Some(100.0), 101.0), Trend::Steady);
+
+        // The same rule has to serve a rate of 7 and a store of 226,000.
+        assert_eq!(trend_between(Some(226_000.0), 226_010.0), Trend::Steady);
+        assert_eq!(trend_between(Some(226_000.0), 250_000.0), Trend::Rising);
+    }
+
+    #[test]
+    fn a_count_is_shortened_to_fit_its_badge() {
+        // The badge on the drawing is 56 units wide and holds about five
+        // characters, so every one of these must come out at five or fewer.
+        for (count, expected) in [
+            (0.0, "0"),
+            (7.0, "7"),
+            (999.0, "999"),
+            (1_000.0, "1.0k"),
+            (4_579.0, "4.6k"),
+            // 9_950 is deliberately absent. It divides to 9.949999… in binary
+            // and formats as "9.9k" rather than the "10.0k" the arithmetic
+            // suggests — true of any language using binary floating point, and
+            // a trap to assert either way round.
+            (9_900.0, "9.9k"),
+            (10_000.0, "10k"),
+            (225_035.0, "225k"),
+            (999_999.0, "1000k"),
+            (1_000_000.0, "1.0M"),
+            (12_300_000.0, "12.3M"),
+        ] {
+            let shortened = Collector::compact(count);
+            assert_eq!(shortened, expected, "{count} shortened wrongly");
+            assert!(
+                shortened.chars().count() <= 5,
+                "{shortened} will not fit the badge"
+            );
+        }
+    }
+
     #[test]
     fn promql_survives_url_encoding() {
         // The characters that actually appear in these queries, and would
@@ -698,11 +1249,13 @@ mod tests {
                 id: "g-queue".to_owned(),
                 value: "12".to_owned(),
                 warn: false,
+                trend: Trend::Steady,
             }],
             alarms: vec![Alarm {
                 text: "worker-service — slow".to_owned(),
                 severity: Status::Degraded,
             }],
+            verdict: decide(true, Status::Degraded, None, Some(0)),
             sources_ok: true,
         };
 

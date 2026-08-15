@@ -151,6 +151,16 @@ async fn relay(
         bad_gateway("echo-service sent an unexpected response")
     })?;
 
+    // Counted here rather than before the call, so this measures round trips
+    // that actually completed. Incrementing on the way out would count attempts
+    // — including the ones that timed out — and a panel drawn from that would
+    // show the synchronous path as healthy precisely when it had stopped
+    // working.
+    //
+    // Every error path above returns early with `?`, so reaching this line is
+    // itself the proof that the call succeeded.
+    metrics::counter!(service_core::metrics::RELAY_CALLS).increment(1);
+
     Ok(Json(RelayResponse {
         echo: upstream.echo,
         via: SERVICE,

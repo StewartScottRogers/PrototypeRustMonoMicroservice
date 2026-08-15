@@ -45,3 +45,27 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
+
+  # The two tools that were watching everything and being watched by nothing.
+  #
+  # An operator asked "is the tracing still recording" had no way to answer
+  # before these existed: Jaeger and Grafana were drawn on the mimic panel with
+  # a lamp that could only ever say "unknown", because nothing scraped them.
+  #
+  # Neither needs a change to compose.yaml. Prometheus reaches both across the
+  # internal network by container name, and neither port has to be published to
+  # the host for that to work.
+
+  # 14269 is the Jaeger administration port, which is separate from the 16686
+  # user interface and the 4317 collector. jaeger_collector_spans_received_total
+  # is the count that answers "is anything still arriving".
+  - job_name: jaeger
+    static_configs:
+      - targets: ["jaeger:14269"]
+
+  # Grafana serves its own metrics on the same port as its user interface, with
+  # no authentication in front of them. grafana_stat_totals_dashboard is how
+  # many dashboards exist; the request histogram counts what it has served.
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
