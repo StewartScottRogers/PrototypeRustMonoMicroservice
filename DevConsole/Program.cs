@@ -38,6 +38,7 @@ internal static class Program
         ["logs"] = "DevLogs.cmd",
         ["demo"] = "DevDemo.cmd",
         ["replay"] = "DevReplay.cmd",
+        ["gource"] = "DevGource.cmd",
         ["stop"] = "DevStop.cmd",
         ["delete"] = "DevDelete.cmd",
         ["remove"] = "DevRemove.cmd",

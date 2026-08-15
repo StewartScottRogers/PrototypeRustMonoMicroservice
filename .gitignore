@@ -381,5 +381,11 @@ target/
 *.pdb
 # Cargo.lock IS committed: this workspace ships binaries, not libraries.
 
+# The video DevGource.cmd --video renders. Regenerated from the history in a
+# minute, tens of megabytes, and out of date the moment anyone commits — three
+# separate reasons not to put it in version control. The Gource workflow leaves
+# its copy as a build artifact instead.
+/gource.mp4
+
 
 

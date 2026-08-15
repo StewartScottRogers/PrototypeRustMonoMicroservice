@@ -21,6 +21,7 @@
     <None Include="$(MSBuildThisFileDirectory)..\.github\workflows\image.yml" Link="workflows\image.yml" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\workflows\security.yml" Link="workflows\security.yml" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\workflows\release.yml" Link="workflows\release.yml" />
+    <None Include="$(MSBuildThisFileDirectory)..\.github\workflows\gource.yml" Link="workflows\gource.yml" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\actions\setup-rust\action.yml" Link="actions\setup-rust\action.yml" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\affected-crates.sh" Link="scripts\affected-crates.sh" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\binary-crates.sh" Link="scripts\binary-crates.sh" />
