@@ -492,10 +492,17 @@ impl Collector {
 
         // ---- the readouts ----
         //
-        // Each value is the bare number. What it *means* is a fixed label on the
-        // panel beside it, which is why nothing here carries a unit: a readout
-        // tile has room to say "orders per second" in full, where a badge
-        // floating on an arrow had room only for an abbreviation.
+        // Each value is the bare number, and nothing here carries a unit.
+        //
+        // These used to be read in an instrument column down the side of the
+        // panel, where each tile had room to say "orders per second" in full.
+        // They are now badges attached to the thing each one measures, which is
+        // a better place to read a number and a far worse place to write four
+        // words. The panel resolves that with a hover: the badge shows the
+        // figure, and pausing on it names the reading, its unit and what it
+        // counts. So the wording still lives in the panel rather than here —
+        // just in `data-title`, `data-unit` and `data-note` on the badge rather
+        // than in a label beside a tile.
         let gauges = vec![
             self.rate_gauge("g-accepted", "sum(rate(orders_accepted_total[15s]))")
                 .await,

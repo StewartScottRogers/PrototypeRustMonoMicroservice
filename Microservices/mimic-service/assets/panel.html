@@ -24,8 +24,27 @@
   .strip b{color:var(--dim);font-weight:500}
   #connection{color:var(--ok)}
   #connection.stale{color:var(--warn)}
-  .bezel{background:var(--ground);border:1px solid var(--edge);
+  /* Positioned, because the hover panel below is placed against it. */
+  .bezel{position:relative;background:var(--ground);border:1px solid var(--edge);
          box-shadow:0 0 0 1px #000 inset,0 24px 60px -30px #000;padding:.5rem}
+
+  /* The hover panel.
+     A badge on the drawing has room for four characters, so everything the old
+     instrument tile said in full - the name, the unit, and what the number
+     actually counts - is said here instead, on demand.
+     Deliberately not the browser's own `title` tooltip: that takes about a
+     second to appear, cannot be styled, and would arrive in the operating
+     system's font in the middle of a control room. `pointer-events:none` keeps
+     it from stealing the hover that summoned it. */
+  .tip{position:absolute;z-index:5;pointer-events:none;max-width:22rem;
+       background:var(--panel-2);border:1px solid var(--edge-hi);
+       box-shadow:0 14px 34px -14px #000;padding:.5rem .65rem;
+       font-size:.72rem;line-height:1.55}
+  .tip[hidden]{display:none}
+  .tip-t{color:var(--dim);letter-spacing:.14em;text-transform:uppercase;font-size:.6rem}
+  .tip-v{font-size:1.05rem;margin:.2rem 0 .25rem;color:var(--ink)}
+  .tip-v span{font-size:.68rem;color:var(--far);letter-spacing:.08em}
+  .tip-n{color:var(--dim);text-wrap:pretty}
   .scroller{overflow-x:auto}
   svg{display:block;width:100%;min-width:72rem;height:auto}
   figure{margin:0}
@@ -74,10 +93,19 @@
   </div>
 
   <div class="bezel">
+    <!-- Filled and placed from script; `aria-live` so a screen reader announces
+         it when a keyboard user tabs onto a reading, which is the same moment a
+         pointer user would see it appear. -->
+    <div class="tip" id="tip" role="status" aria-live="polite" hidden>
+      <div class="tip-t" id="tip-title"></div>
+      <div class="tip-v"><b id="tip-value">&mdash;</b> <span id="tip-unit"></span></div>
+      <div class="tip-n" id="tip-note"></div>
+    </div>
+
     <div class="scroller">
       <figure>
-        <svg viewBox="0 0 1500 838" role="img"
-             aria-label="Live mimic of the order platform, read left to right and then top to bottom. Band one: clients post an order to the gateway service, which writes the order and an outbox row to PostgreSQL in one transaction, and the outbox relay polls that table. The gateway also calls the echo service synchronously as a simple example. Band two: the relay publishes to the command stream on the NATS JetStream broker, one worker replica takes each command, and the worker publishes to the event stream, which every subscriber reads a copy of, so both the notifier and the audit service react. Redis holds idempotency keys and repeatedly failing messages are parked on the dead-letter stream. Band three: Prometheus, Grafana and Jaeger receive telemetry from every service. An instrument column on the right shows live rates and depths.">
+        <svg viewBox="0 0 1224 800" role="img"
+             aria-label="Live mimic of the order platform, read left to right and then top to bottom. Band one: clients post an order to the gateway service, which writes the order and an outbox row to PostgreSQL in one transaction, and the outbox relay polls that table. The gateway also calls the echo service synchronously as a simple example. Band two: the relay publishes to the command stream on the NATS JetStream broker, one worker replica takes each command, and the worker publishes to the event stream, which every subscriber reads a copy of, so both the notifier and the audit service react. Redis holds idempotency keys and repeatedly failing messages are parked on the dead-letter stream. Band three: Prometheus, Grafana and Jaeger receive telemetry from every service. Each live rate or depth is shown as a small figure attached to the thing it measures; pausing the pointer on one names it in full.">
           <defs>
             <marker id="arrow-sync" viewBox="0 0 10 10" refX="9" refY="5"
                     markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -94,7 +122,6 @@
             .box      { fill:#0d151c; stroke:#334c5c; stroke-width:1.4; }
             .box-soft { fill:#0a1118; stroke:#22333e; stroke-width:1.2; }
             .box-tag  { fill:#0a1118; stroke:#334c5c; stroke-width:1.2; stroke-dasharray:3 3; }
-            .tile     { fill:#0d151c; stroke:#22333e; stroke-width:1.2; }
             .name     { font-family:inherit; font-size:14px; fill:#c7d8e4; letter-spacing:.04em; }
             .sub      { font-family:inherit; font-size:10.5px; fill:#6d8496; }
             .detail   { font-family:inherit; font-size:10.5px; fill:#6d8496; }
@@ -106,19 +133,41 @@
             .line-quiet { stroke:#5c7382; stroke-width:1.2; fill:none; stroke-dasharray:2 4; }
             .rule     { stroke:#1a2831; stroke-width:1; }
             .tag-txt  { font-family:inherit; font-size:12px; fill:#34c3e0; letter-spacing:.1em; }
-            .read-lbl { font-family:inherit; font-size:10.5px; fill:#6d8496; letter-spacing:.08em; }
-            .read-val { font-family:inherit; font-size:23px; fill:#34c3e0; }
             .read-unt { font-family:inherit; font-size:10px; fill:#42555f; }
+
+            /* ---- the inline readings ----
+               Each number sits on the lower edge of the thing it measures, so
+               "5.07" is read as a property of the notifier rather than as the
+               fifth row of a table that has to be matched back to a box.
+               56 by 20 units holds "1714" or "5.07" and nothing else; the name,
+               the unit and the sentence explaining it live in the hover panel,
+               which is the trade that lets the badge be this small.
+
+               It stands out by being brighter than its host, not larger: a fill
+               a step above the node's own, and a border in the reading's colour
+               - cyan for a synchronous count, violet for one carried by the
+               message bus, matching the arrows.
+
+               Neither `stroke` here nor `fill` on .rd-val, deliberately. Both
+               are painted from script as readings arrive, and a class rule
+               overrides a presentation attribute - which is exactly how the
+               amber warning colour on the old instrument tiles was silently
+               lost. */
+            .rd       { cursor:help; }
+            .rd-box   { fill:#16232e; stroke-width:1.1; }
+            .rd-val   { font-family:inherit; font-size:13px; letter-spacing:.02em; }
+            .rd:hover .rd-box, .rd:focus .rd-box { fill:#1e3241; stroke-width:1.8; }
+            .rd:focus { outline:none; }
           </style>
 
           <!-- ============ ALARM BANNER ============ -->
-          <rect id="alarm-box" x="40" y="20" width="1420" height="52" rx="2"
+          <rect id="alarm-box" x="40" y="20" width="1136" height="52" rx="2"
                 fill="#0f1a14" stroke="#2fd98a" stroke-width="1.4"/>
           <circle id="alarm-led" cx="70" cy="46" r="7" fill="#2fd98a"/>
           <text id="alarm-title" x="96" y="51" font-size="12" fill="#2fd98a" letter-spacing="2.4">ALL CLEAR</text>
           <line x1="212" y1="30" x2="212" y2="62" class="rule"/>
           <text id="alarm-text" x="234" y="51" font-size="13" fill="#c7d8e4">no active alarms</text>
-          <text id="alarm-count" x="1436" y="51" font-size="11" fill="#6d8496" text-anchor="end">0 ACTIVE</text>
+          <text id="alarm-count" x="1152" y="51" font-size="11" fill="#6d8496" text-anchor="end">0 ACTIVE</text>
 
           <!-- ================================================================
                BAND 1 — accept and store. Reads left to right.
@@ -141,6 +190,15 @@
           <text class="name" x="336" y="167" text-anchor="middle">Gateway service</text>
           <text id="txt-gateway" class="detail" x="336" y="185" text-anchor="middle">&mdash;</text>
 
+          <g class="rd" tabindex="0" role="img"
+             data-title="Orders accepted" data-unit="per second"
+             data-note="Orders the gateway service took in and committed, averaged over the last fifteen seconds.">
+            <rect class="rd-box" id="box-g-accepted" data-hue="#34c3e0" stroke="#34c3e0"
+                  x="260" y="192" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-accepted" data-hue="#34c3e0" fill="#34c3e0"
+                  x="288" y="206" text-anchor="middle">&mdash;</text>
+          </g>
+
           <path id="edge-gateway-postgres" class="line-sync" d="M444 169 H489" marker-end="url(#arrow-sync)"/>
           <text class="edge-lbl" x="466" y="128" text-anchor="middle">one transaction</text>
 
@@ -158,6 +216,15 @@
           <circle id="led-relay" cx="918" cy="150" r="6" fill="#5a6b78"/>
           <text class="name" x="826" y="167" text-anchor="middle">Outbox relay</text>
           <text id="txt-relay" class="detail" x="826" y="185" text-anchor="middle">&mdash;</text>
+
+          <g class="rd" tabindex="0" role="img"
+             data-title="Outbox rows published" data-unit="per second"
+             data-note="Committed outbox rows the relay has put on the message bus, averaged over the last fifteen seconds. It should track the accepted rate; a lasting gap means the relay is behind.">
+            <rect class="rd-box" id="box-g-relayed" data-hue="#b07cff" stroke="#b07cff"
+                  x="750" y="192" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-relayed" data-hue="#b07cff" fill="#b07cff"
+                  x="778" y="206" text-anchor="middle">&mdash;</text>
+          </g>
 
           <path id="edge-relay-tag" class="line-async" d="M934 169 H986" marker-end="url(#arrow-async)"/>
 
@@ -194,11 +261,43 @@
           <text class="name" x="263" y="399" text-anchor="middle">Command stream</text>
           <text class="sub"  x="263" y="417" text-anchor="middle">one shared consumer</text>
 
+          <g class="rd" tabindex="0" role="img"
+             data-title="Waiting for the worker" data-unit="messages"
+             data-note="Commands sitting on the stream that no worker has claimed yet. Past 100 the worker is drawn as backed up rather than healthy.">
+            <rect class="rd-box" id="box-g-queue" data-hue="#34c3e0" stroke="#34c3e0"
+                  x="166" y="428" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-queue" data-hue="#34c3e0" fill="#34c3e0"
+                  x="194" y="442" text-anchor="middle">&mdash;</text>
+          </g>
+
           <path id="edge-commands-worker" class="line-async" d="M372 405 H422" marker-end="url(#arrow-async)"/>
           <text class="edge-lbl" x="397" y="364" text-anchor="middle">one takes it</text>
 
-          <!-- worker -->
+          <!-- worker
+               Its two readings sit on the *top* edge, alone among the badges on
+               this drawing. Everything else wears its reading on the lower edge,
+               but the worker is the one node with lines leaving underneath it -
+               to Redis and to the dead-letter stream - and a badge there would
+               sit on top of them. -->
           <rect id="node-worker" class="box" x="426" y="372" width="196" height="66" rx="2"/>
+
+          <g class="rd" tabindex="0" role="img"
+             data-title="Orders processed" data-unit="per second"
+             data-note="Commands the worker replicas finished, averaged over the last fifteen seconds. Both replicas share one durable consumer name, so this is the two of them combined rather than each.">
+            <rect class="rd-box" id="box-g-processed" data-hue="#b07cff" stroke="#b07cff"
+                  x="438" y="362" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-processed" data-hue="#b07cff" fill="#b07cff"
+                  x="466" y="376" text-anchor="middle">&mdash;</text>
+          </g>
+
+          <g class="rd" tabindex="0" role="img"
+             data-title="Slowest one in a hundred" data-unit="milliseconds"
+             data-note="The ninety-ninth percentile of worker processing time over five minutes: ninety-nine orders in a hundred finish faster than this. Past 400 milliseconds the worker is drawn as degraded.">
+            <rect class="rd-box" id="box-g-p99" data-hue="#34c3e0" stroke="#34c3e0"
+                  x="540" y="362" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-p99" data-hue="#34c3e0" fill="#34c3e0"
+                  x="568" y="376" text-anchor="middle">&mdash;</text>
+          </g>
           <circle id="led-worker" cx="606" cy="386" r="6" fill="#5a6b78"/>
           <text class="name" x="514" y="399" text-anchor="middle">Worker</text>
           <text id="txt-worker" class="detail" x="514" y="417" text-anchor="middle">&mdash;</text>
@@ -220,12 +319,30 @@
           <text class="name" x="1068" y="363" text-anchor="middle">Notifier</text>
           <text id="txt-notifier" class="detail" x="1068" y="381" text-anchor="middle">&mdash;</text>
 
+          <g class="rd" tabindex="0" role="img"
+             data-title="Notifications handled" data-unit="per second"
+             data-note="Events the notifier took from its own durable subscription. It receives every event rather than a share of them, so this follows the worker's publish rate.">
+            <rect class="rd-box" id="box-g-notified" data-hue="#b07cff" stroke="#b07cff"
+                  x="992" y="386" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-notified" data-hue="#b07cff" fill="#b07cff"
+                  x="1020" y="400" text-anchor="middle">&mdash;</text>
+          </g>
+
           <rect class="box" x="980" y="422" width="196" height="60" rx="2"/>
           <circle id="led-audit" cx="1160" cy="436" r="6" fill="#5a6b78"/>
           <text class="name" x="1068" y="449" text-anchor="middle">Audit</text>
           <text id="txt-audit" class="detail" x="1068" y="467" text-anchor="middle">&mdash;</text>
 
-          <text class="edge-lbl" x="1176" y="500" text-anchor="end">writes an audit record back to PostgreSQL</text>
+          <g class="rd" tabindex="0" role="img"
+             data-title="Audit events handled" data-unit="per second"
+             data-note="Events the audit service took from its own separate subscription. It holds a different name from the notifier, so it gets its own copy of every event rather than competing for them.">
+            <rect class="rd-box" id="box-g-audited" data-hue="#b07cff" stroke="#b07cff"
+                  x="992" y="472" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-audited" data-hue="#b07cff" fill="#b07cff"
+                  x="1020" y="486" text-anchor="middle">&mdash;</text>
+          </g>
+
+          <text class="edge-lbl" x="1176" y="510" text-anchor="end">writes an audit record back to PostgreSQL</text>
 
           <!-- what hangs below the worker: the store it dedupes with, and the
                place a message goes when it cannot succeed -->
@@ -243,6 +360,20 @@
           <rect class="box-soft" x="540" y="490" width="212" height="54" rx="2"/>
           <text class="name" x="646" y="515" text-anchor="middle">Dead-letter stream</text>
           <text class="sub"  x="646" y="532" text-anchor="middle">DevReplay.cmd returns them</text>
+
+          <!-- On the right edge rather than the lower one, and centred rather
+               than inset. This box is two lines of text in 54 units of height,
+               so a badge on the bottom edge lands on top of "DevReplay.cmd
+               returns them" - which is the sentence telling a reader what to do
+               about the number. -->
+          <g class="rd" tabindex="0" role="img"
+             data-title="Parked as dead letters" data-unit="messages"
+             data-note="Messages that failed three times and were set aside rather than retried forever. Any number above zero turns amber: nothing clears them on its own, and DevReplay.cmd is what puts them back on the queue.">
+            <rect class="rd-box" id="box-g-dlq" data-hue="#34c3e0" stroke="#34c3e0"
+                  x="740" y="507" width="56" height="20" rx="2"/>
+            <text class="rd-val" id="g-dlq" data-hue="#34c3e0" fill="#34c3e0"
+                  x="768" y="521" text-anchor="middle">&mdash;</text>
+          </g>
 
           <!-- ================================================================
                BAND 3 — telemetry. Every service reports downward into it.
@@ -272,72 +403,36 @@
           <text class="sub"  x="724" y="676" text-anchor="middle">traces</text>
 
           <!-- ================================================================
-               INSTRUMENT COLUMN — every number lives here, not on the diagram.
+               KEY — what a line and a lamp mean.
+
+               This used to sit at the foot of an instrument column down the
+               right-hand side. Every number that column held now sits on the
+               thing it measures, which left the key as the only tenant of 280
+               units of width. Moved into the empty quarter beside band three,
+               it costs the drawing nothing and the canvas is a fifth narrower,
+               so every box on it is drawn larger at the same screen size.
                ================================================================ -->
-          <line x1="1216" y1="104" x2="1216" y2="780" class="rule"/>
-          <text class="band" x="1240" y="116">READINGS</text>
+          <text class="band" x="884" y="640">KEY</text>
 
-          <rect class="tile" id="box-g-accepted" x="1240" y="132" width="220" height="62" rx="2"/>
-          <text class="read-lbl" x="1256" y="154">ORDERS ACCEPTED</text>
-          <text class="read-unt" x="1256" y="180">per second</text>
-          <text class="read-val" id="g-accepted" data-hue="#34c3e0" x="1444" y="182" text-anchor="end">&mdash;</text>
+          <path class="line-sync" d="M884 660 H922" marker-end="url(#arrow-sync)"/>
+          <text class="sub" x="934" y="664">synchronous call</text>
+          <path class="line-async" d="M884 682 H922" marker-end="url(#arrow-async)"/>
+          <text class="sub" x="934" y="686">message or event</text>
+          <path class="line-quiet" d="M884 704 H922"/>
+          <text class="sub" x="934" y="708">telemetry</text>
 
-          <rect class="tile" id="box-g-relayed" x="1240" y="202" width="220" height="62" rx="2"/>
-          <text class="read-lbl" x="1256" y="224">OUTBOX ROWS PUBLISHED</text>
-          <text class="read-unt" x="1256" y="250">per second</text>
-          <text class="read-val" id="g-relayed" data-hue="#b07cff" x="1444" y="252" text-anchor="end">&mdash;</text>
-
-          <rect class="tile" id="box-g-processed" x="1240" y="272" width="220" height="62" rx="2"/>
-          <text class="read-lbl" x="1256" y="294">ORDERS PROCESSED</text>
-          <text class="read-unt" x="1256" y="320">per second</text>
-          <text class="read-val" id="g-processed" data-hue="#b07cff" x="1444" y="322" text-anchor="end">&mdash;</text>
-
-          <rect class="tile" id="box-g-notified" x="1240" y="342" width="220" height="62" rx="2"/>
-          <text class="read-lbl" x="1256" y="364">NOTIFICATIONS HANDLED</text>
-          <text class="read-unt" x="1256" y="390">per second</text>
-          <text class="read-val" id="g-notified" data-hue="#b07cff" x="1444" y="392" text-anchor="end">&mdash;</text>
-
-          <rect class="tile" id="box-g-audited" x="1240" y="412" width="220" height="62" rx="2"/>
-          <text class="read-lbl" x="1256" y="434">AUDIT EVENTS HANDLED</text>
-          <text class="read-unt" x="1256" y="460">per second</text>
-          <text class="read-val" id="g-audited" data-hue="#b07cff" x="1444" y="462" text-anchor="end">&mdash;</text>
-
-          <rect class="tile" id="box-g-queue" x="1240" y="482" width="220" height="62" rx="2"/>
-          <text class="read-lbl" x="1256" y="504">WAITING FOR THE WORKER</text>
-          <text class="read-unt" x="1256" y="530">messages</text>
-          <text class="read-val" id="g-queue" data-hue="#34c3e0" x="1444" y="532" text-anchor="end">&mdash;</text>
-
-          <rect class="tile" id="box-g-dlq" x="1240" y="552" width="220" height="62" rx="2"/>
-          <text class="read-lbl" x="1256" y="574">PARKED AS DEAD LETTERS</text>
-          <text class="read-unt" x="1256" y="600">messages</text>
-          <text class="read-val" id="g-dlq" data-hue="#34c3e0" x="1444" y="602" text-anchor="end">&mdash;</text>
-
-          <rect class="tile" id="box-g-p99" x="1240" y="622" width="220" height="62" rx="2"/>
-          <text class="read-lbl" x="1256" y="644">SLOWEST ONE IN A HUNDRED</text>
-          <text class="read-unt" x="1256" y="670">milliseconds to process</text>
-          <text class="read-val" id="g-p99" data-hue="#34c3e0" x="1444" y="672" text-anchor="end">&mdash;</text>
-
-          <!-- legend: lines first, then what a lamp colour means -->
-          <text class="band" x="1240" y="712">KEY</text>
-
-          <path class="line-sync" d="M1240 730 H1278" marker-end="url(#arrow-sync)"/>
-          <text class="sub" x="1290" y="734">synchronous call</text>
-          <path class="line-async" d="M1240 752 H1278" marker-end="url(#arrow-async)"/>
-          <text class="sub" x="1290" y="756">message or event</text>
-          <path class="line-quiet" d="M1240 774 H1278"/>
-          <text class="sub" x="1290" y="778">telemetry</text>
-
-          <circle cx="1246" cy="796" r="5" fill="#2fd98a"/>
-          <text class="sub" x="1260" y="800">healthy</text>
-          <circle cx="1320" cy="796" r="5" fill="#ffb020"/>
-          <text class="sub" x="1334" y="800">degraded</text>
-          <circle cx="1404" cy="796" r="5" fill="#ff4a4a"/>
-          <text class="sub" x="1418" y="800">down</text>
+          <circle cx="890" cy="726" r="5" fill="#2fd98a"/>
+          <text class="sub" x="904" y="730">healthy</text>
+          <circle cx="964" cy="726" r="5" fill="#ffb020"/>
+          <text class="sub" x="978" y="730">degraded</text>
+          <circle cx="1048" cy="726" r="5" fill="#ff4a4a"/>
+          <text class="sub" x="1062" y="730">down</text>
 
           <!-- The honest reading of every animation on this page. It belongs
                here rather than only in the walkthrough, because someone
                watching a line light up is not reading the walkthrough. -->
-          <text class="read-unt" x="1240" y="822">a lit line means a message was sent along it</text>
+          <text class="read-unt" x="884" y="752">a lit line means a message was sent along it</text>
+          <text class="read-unt" x="884" y="768">pause the pointer on a number to see what it counts</text>
         </svg>
       </figure>
       <figcaption>
@@ -440,9 +535,16 @@
       if (!value) continue;
       value.textContent = reading.value;
       value.setAttribute("fill", reading.warn ? COLOURS.degraded : value.getAttribute("data-hue"));
-      const tile = byId("box-" + reading.id);
-      if (tile) tile.setAttribute("stroke", reading.warn ? COLOURS.degraded : "#22333e");
+      // The badge's border carries the same warning as its number. Back to the
+      // reading's own hue rather than to one shared grey, because the border is
+      // what says whether this count travelled the message bus or a call.
+      const badge = byId("box-" + reading.id);
+      if (badge) {
+        badge.setAttribute("stroke", reading.warn ? COLOURS.degraded : badge.getAttribute("data-hue"));
+      }
     }
+    // A reading on screen inside the hover panel has just gone stale.
+    if (openReading) fillTip(openReading);
   }
 
   function paintAlarms(alarms) {
@@ -574,6 +676,83 @@
       if (touched.has(edgeId)) light(edgeId);
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // The hover panel on a reading
+  //
+  // A badge holds four characters. Everything the instrument column used to say
+  // in words - the name, the unit, and what the number actually counts - is
+  // here, and appears when the pointer is *paused* on a badge rather than the
+  // instant it passes over one. Crossing the diagram to reach something else
+  // should not leave three panels flashing in its wake.
+  // ---------------------------------------------------------------------------
+
+  // Long enough that crossing a badge is not "pausing" on it, short enough that
+  // deliberately stopping does not feel broken.
+  const HOVER_PAUSE_MILLISECONDS = 320;
+
+  let openReading = null;   // the <g class="rd"> the panel is describing
+  let hoverTimer = null;
+
+  function fillTip(group) {
+    const value = group.querySelector(".rd-val");
+    byId("tip-title").textContent = group.dataset.title;
+    byId("tip-value").textContent = value ? value.textContent : "—";
+    byId("tip-value").style.color = value ? value.getAttribute("fill") : "";
+    byId("tip-unit").textContent = group.dataset.unit;
+    byId("tip-note").textContent = group.dataset.note;
+  }
+
+  function showTip(group) {
+    const tip = byId("tip");
+    openReading = group;
+    fillTip(group);
+    tip.hidden = false;
+
+    // Measured after unhiding, because a hidden element has no size. Both
+    // rectangles are in viewport coordinates, so a horizontally scrolled
+    // diagram needs no correction of its own.
+    const frame = document.querySelector(".bezel").getBoundingClientRect();
+    const badge = group.getBoundingClientRect();
+
+    let left = badge.left - frame.left + badge.width / 2 - tip.offsetWidth / 2;
+    let top = badge.top - frame.top - tip.offsetHeight - 10;
+
+    // Not enough room above: drop it below the badge rather than off the top.
+    if (top < 4) top = badge.bottom - frame.top + 10;
+    left = Math.max(4, Math.min(left, frame.width - tip.offsetWidth - 4));
+
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
+  }
+
+  function hideTip() {
+    window.clearTimeout(hoverTimer);
+    openReading = null;
+    byId("tip").hidden = true;
+  }
+
+  for (const group of document.querySelectorAll(".rd")) {
+    // The badge itself reads as four characters with no context, so it is named
+    // here from the same two attributes the hover panel uses. Built rather than
+    // written into the markup, so the name and the panel cannot drift apart.
+    group.setAttribute("aria-label", group.dataset.title + ", " + group.dataset.unit);
+
+    group.addEventListener("mouseenter", () => {
+      window.clearTimeout(hoverTimer);
+      hoverTimer = window.setTimeout(() => showTip(group), HOVER_PAUSE_MILLISECONDS);
+    });
+    group.addEventListener("mouseleave", hideTip);
+    // No pause on the keyboard path: arriving by Tab is already deliberate.
+    group.addEventListener("focus", () => showTip(group));
+    group.addEventListener("blur", hideTip);
+  }
+
+  // Escape closes it, which is the one thing a keyboard user cannot otherwise
+  // do without moving focus off the reading they are reading about.
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideTip();
+  });
 
   // ---------------------------------------------------------------------------
   // The three indicators
