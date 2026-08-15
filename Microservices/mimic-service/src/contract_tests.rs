@@ -13,8 +13,23 @@
 //!   makes the durable consumer names a contract with every other service —
 //!   see [`the_tap_names_cannot_steal_another_services_traffic`].
 
-use crate::collect::{Alarm, Gauge, Node, Snapshot, Status};
+use crate::collect::{Alarm, Gauge, Node, Snapshot, Status, Trend, Verdict};
 use crate::live::{COMMAND_EDGES, DEAD_LETTER_EDGES, EVENT_EDGES};
+
+/// A verdict for fixtures that are not about the verdict.
+///
+/// Every snapshot needs one, and most of these tests are asserting something
+/// else entirely. A named helper keeps that noise out of them and means the
+/// shape only has to change in one place when the verdict does.
+fn a_normal_verdict() -> Verdict {
+    Verdict {
+        level: Status::Healthy,
+        headline: "Normal".to_owned(),
+        detail: "everything is fine".to_owned(),
+        action: String::new(),
+        runbook: String::new(),
+    }
+}
 use crate::push::{Edge, Push};
 use crate::tap::TAP_NAMES;
 use chrono::Utc;
@@ -63,11 +78,13 @@ fn a_snapshot_serialises_to_the_shape_the_page_expects() {
             id: "g-queue".to_owned(),
             value: "12".to_owned(),
             warn: true,
+            trend: Trend::Steady,
         }],
         alarms: vec![Alarm {
             text: "worker-service — slow".to_owned(),
             severity: Status::Degraded,
         }],
+        verdict: a_normal_verdict(),
         sources_ok: true,
     };
 
@@ -110,6 +127,7 @@ fn an_all_clear_snapshot_still_carries_every_array() {
         nodes: vec![],
         gauges: vec![],
         alarms: vec![],
+        verdict: a_normal_verdict(),
         sources_ok: true,
     };
 
@@ -338,6 +356,7 @@ fn a_pulse_carries_readings_and_motion_but_never_an_order() {
             id: "g-processed".to_owned(),
             value: "2.40".to_owned(),
             warn: false,
+            trend: Trend::Steady,
         }],
         edges: vec![Edge {
             id: "edge-events-audit".to_owned(),
@@ -422,6 +441,7 @@ fn a_snapshot() -> Snapshot {
         }],
         gauges: vec![],
         alarms: vec![],
+        verdict: a_normal_verdict(),
         sources_ok: true,
     }
 }
@@ -449,6 +469,7 @@ fn an_unreadable_depth_shows_the_no_reading_mark_rather_than_a_zero() {
         id: "g-queue".to_owned(),
         value: unknown.map_or_else(|| "—".to_owned(), |depth: u64| depth.to_string()),
         warn: unknown.is_some_and(|depth| depth > 100),
+        trend: Trend::Steady,
     };
 
     assert_eq!(
@@ -467,6 +488,7 @@ fn a_readable_depth_still_shows_the_number() {
         id: "g-queue".to_owned(),
         value: known.map_or_else(|| "—".to_owned(), |depth| depth.to_string()),
         warn: known.is_some_and(|depth| depth > 100),
+        trend: Trend::Steady,
     };
 
     assert_eq!(queue.value, "7");
@@ -499,8 +521,10 @@ fn a_window_that_dropped_messages_must_not_win_the_merge() {
             // What Prometheus correctly observed.
             value: "12.00".to_owned(),
             warn: false,
+            trend: Trend::Steady,
         }],
         alarms: vec![],
+        verdict: a_normal_verdict(),
         sources_ok: true,
     };
 
@@ -509,6 +533,7 @@ fn a_window_that_dropped_messages_must_not_win_the_merge() {
         // What a tap that discarded everything would compute.
         value: "0.00".to_owned(),
         warn: false,
+        trend: Trend::Steady,
     }];
 
     // The three conditions the aggregator combines. Connected and warmed up,
@@ -539,8 +564,10 @@ fn a_clean_window_still_wins_the_merge() {
             id: "g-relayed".to_owned(),
             value: "12.00".to_owned(),
             warn: false,
+            trend: Trend::Steady,
         }],
         alarms: vec![],
+        verdict: a_normal_verdict(),
         sources_ok: true,
     };
 
@@ -548,6 +575,7 @@ fn a_clean_window_still_wins_the_merge() {
         id: "g-relayed".to_owned(),
         value: "13.40".to_owned(),
         warn: false,
+        trend: Trend::Steady,
     }];
 
     let merged = crate::live::merge(sampled, live, true && true && true);

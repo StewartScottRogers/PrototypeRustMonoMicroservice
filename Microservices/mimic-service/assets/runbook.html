@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Runbook — Order Platform</title>
+<style>
+  :root {
+    --void:#05080b; --ground:#080d12; --panel:#0d151c; --panel-2:#101a22;
+    --edge:#22333e; --edge-hi:#334c5c;
+    --ink:#c7d8e4; --dim:#6d8496; --far:#42555f;
+    --ok:#2fd98a; --warn:#ffb020; --fail:#ff4a4a; --unknown:#5a6b78;
+    --sync:#34c3e0;
+    --mono:"Cascadia Mono",Consolas,"SF Mono",Menlo,"DejaVu Sans Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--void);color:var(--ink);font-family:var(--mono);margin:0;
+       padding:clamp(1rem,3vw,3rem);line-height:1.7;-webkit-font-smoothing:antialiased}
+  main{max-width:64rem;margin:0 auto}
+  h1{font-size:clamp(1.1rem,1.6vw,1.7rem);letter-spacing:.12em;text-transform:uppercase;
+     color:var(--dim);font-weight:500;margin:0 0 .3rem}
+  .lede{color:var(--dim);margin:0 0 2.5rem;text-wrap:pretty}
+  /* Each entry is a landing site: the panel links straight to one, and the
+     highlight makes it obvious which one you were sent to. */
+  section{background:var(--panel);border:1px solid var(--edge);border-left-width:3px;
+          padding:1rem 1.25rem;margin:0 0 1.25rem;scroll-margin-top:1rem}
+  section:target{border-left-color:var(--sync);background:var(--panel-2)}
+  h2{font-size:clamp(.95rem,1.2vw,1.25rem);margin:0 0 .2rem;color:var(--ink)}
+  .says{color:var(--far);font-size:.8rem;margin:0 0 .9rem}
+  .says b{color:var(--warn);font-weight:500}
+  ol{margin:.4rem 0 0;padding-left:1.3rem}
+  li{margin:.35rem 0;text-wrap:pretty}
+  code{background:var(--panel-2);border:1px solid var(--edge);padding:.1rem .35rem;
+       color:var(--sync);font-size:.85em;white-space:nowrap}
+  .why{color:var(--dim);font-size:.85rem;border-top:1px solid var(--edge);
+       margin-top:.9rem;padding-top:.7rem;text-wrap:pretty}
+  a{color:var(--sync)}
+  #down{border-left-color:var(--fail)}
+  #behind,#degraded,#parked{border-left-color:var(--warn)}
+  #sources{border-left-color:var(--unknown)}
+</style>
+</head>
+<body>
+<main>
+
+<h1>Runbook &middot; Order Platform</h1>
+<p class="lede">
+  One entry per verdict the live panel can reach. It links straight here, to the
+  entry matching what it decided — so the question is never ''which page is
+  this?'' but ''what do I do about this?''. Every entry says what the panel saw,
+  what to do in order, and why it is worth doing.
+</p>
+
+<section id="sources">
+  <h2>Cannot tell</h2>
+  <p class="says">The panel says: <b>Prometheus is not answering.</b></p>
+  <ol>
+    <li>Treat every number on the panel as the last one that arrived, not the
+      current one. Nothing below the banner can be trusted until this clears.</li>
+    <li>Check the container is up: <code>docker compose ps prometheus</code></li>
+    <li>Read why it stopped: <code>docker compose logs --tail=50 prometheus</code></li>
+    <li>Restart it: <code>docker compose restart prometheus</code></li>
+    <li>Confirm every target is being scraped again at
+      <a href="http://localhost:9090/targets" target="_blank" rel="noopener noreferrer">the targets page</a>.</li>
+  </ol>
+  <p class="why">
+    This outranks every other verdict on purpose. A monitoring system that has
+    stopped receiving measurements will happily keep showing the last healthy
+    picture, and ''everything looks fine'' is the most dangerous thing a panel
+    can say when it has stopped being told anything. The lamps go grey rather
+    than green for the same reason.
+  </p>
+</section>
+
+<section id="down">
+  <h2>Down</h2>
+  <p class="says">The panel says: <b>a component is not answering.</b></p>
+  <ol>
+    <li>Find the red lamp on the drawing. That names the component.</li>
+    <li>Confirm it: <code>DevStatus.cmd</code></li>
+    <li>Read the last of its output:
+      <code>docker compose logs --tail=100 &lt;service&gt;</code></li>
+    <li>If it is restarting in a loop, the logs repeat — look at the first
+      failure after each start, not the last line.</li>
+    <li>Restart it: <code>docker compose restart &lt;service&gt;</code></li>
+    <li>If it will not start at all, the whole stack can be rebuilt with
+      <code>DevStart.cmd</code>. That is a bigger hammer than it looks: it
+      leaves data alone, but every service restarts.</li>
+  </ol>
+  <p class="why">
+    A service that is down loses nothing permanently here. The outbox holds
+    accepted orders in PostgreSQL and the broker holds unprocessed commands, so
+    work waits rather than disappearing. What it does mean is that the queue
+    behind it is growing — check <em>waiting for the worker</em> on the panel
+    before deciding how urgent this is.
+  </p>
+</section>
+
+<section id="behind">
+  <h2>Falling behind</h2>
+  <p class="says">The panel says: <b>one stage is not keeping up with the one before it.</b></p>
+  <ol>
+    <li>Read which stage the banner names. It names the <em>first</em> one that
+      fell behind, which is the one to look at — everything downstream of a
+      stalled stage is starved rather than broken.</li>
+    <li>Look at that stage's own readings on the drawing: throughput, and for
+      the worker also <em>slowest one in a hundred</em>.</li>
+    <li>Check whether its queue is growing. A stage that is behind with a
+      growing queue is saturated; behind with an empty queue is stuck.</li>
+    <li>Read its logs:
+      <code>docker compose logs --tail=100 &lt;service&gt;</code></li>
+    <li>If it is saturated rather than broken, add capacity:
+      <code>docker compose up -d --scale worker-service=4</code></li>
+  </ol>
+  <p class="why">
+    This is the most useful thing the panel can tell you, and it comes from a
+    conservation law rather than a threshold: every order accepted must be
+    relayed, every relayed order processed, and every processed order reacted
+    to. In steady state those five rates are the same number. Where they stop
+    matching is where the work is going missing, and that localises the fault to
+    one component without anybody comparing five numbers by eye.
+  </p>
+</section>
+
+<section id="degraded">
+  <h2>Degraded</h2>
+  <p class="says">The panel says: <b>the chain balances, but a component reports trouble.</b></p>
+  <ol>
+    <li>Find the amber lamp. Its detail line says what tripped it — usually the
+      ninety-ninth percentile processing time, or a queue past its threshold.</li>
+    <li>Check the direction: a reading marked &#9650; is getting worse, and one
+      marked &#9660; is recovering on its own.</li>
+    <li>If it is worsening, treat it as ''falling behind'' above before it
+      becomes that.</li>
+    <li>If it is recovering, watch it. A brief spike after a restart or a burst
+      of traffic is normal and needs nobody.</li>
+  </ol>
+  <p class="why">
+    Degraded means slow, not broken: work is still flowing end to end. That is
+    why it ranks below a stage falling behind — this is a warning about where
+    things are heading, and that is a statement about where they already are.
+  </p>
+</section>
+
+<section id="parked">
+  <h2>Work is parked</h2>
+  <p class="says">The panel says: <b>messages failed three times and were set aside.</b></p>
+  <ol>
+    <li>Look first, change nothing: <code>DevReplay.cmd --dry-run</code></li>
+    <li>Decide whether the cause is fixed. Replaying into a system that still
+      rejects them just parks them again three attempts later.</li>
+    <li>When it is fixed, put them back: <code>DevReplay.cmd</code></li>
+    <li>Watch <em>parked as dead letters</em> fall, and the worker's throughput
+      rise as it works through the backlog.</li>
+  </ol>
+  <p class="why">
+    Nothing clears these on its own, and that is deliberate rather than an
+    oversight. A message that failed three times is a question — bad data, a
+    schema that moved, a downstream service that was away — and retrying it
+    forever would turn one broken message into a loop that buries everything
+    behind it. The count stays on screen until a person decides.
+  </p>
+</section>
+
+<section id="normal">
+  <h2>Normal</h2>
+  <p class="says">The panel says: <b>everything is answering and the chain balances.</b></p>
+  <ol>
+    <li>Nothing to do.</li>
+  </ol>
+  <p class="why">
+    Worth stating explicitly, because a panel that only ever speaks up when
+    something is wrong leaves you unable to tell ''fine'' from ''not looking''.
+    If the readings are all zero the system is idle rather than broken — drive
+    some traffic from the console's left-hand rail to see it move.
+  </p>
+</section>
+
+</main>
+</body>
+</html>

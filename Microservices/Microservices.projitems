@@ -59,5 +59,6 @@
     <None Include="$(MSBuildThisFileDirectory)mimic-service\assets\panel.html" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\assets\console.html" />
     <None Include="$(MSBuildThisFileDirectory)mimic-service\assets\generators.html" />
+    <None Include="$(MSBuildThisFileDirectory)mimic-service\assets\runbook.html" />
   </ItemGroup>
 </Project>

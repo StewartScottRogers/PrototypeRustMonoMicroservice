@@ -35,9 +35,9 @@
 //! unit tested with no broker, no database and no browser, which is what the
 //! tests at the bottom do.
 
-use crate::collect::{Gauge, Snapshot};
+use crate::collect::{Gauge, Snapshot, trend_between};
 use chrono::{DateTime, Utc};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::time::{Duration, Instant};
 
 /// How far behind a message may be before the panel refuses to animate it.
@@ -197,6 +197,14 @@ pub struct LiveReadings {
     /// Needed because a rate over a fifteen-second window is meaningless until
     /// fifteen seconds have passed — see [`Self::warmed_up`].
     started: Option<Instant>,
+    /// The rates this reported last time, so each reading can say which way it
+    /// moved.
+    ///
+    /// Kept here rather than borrowed from the sampled reading it replaces: the
+    /// tap measures a different thing on a different cadence, and a live value
+    /// carrying a sampled direction would be two measurements wearing one
+    /// label.
+    previous_rates: BTreeMap<&'static str, f64>,
 }
 
 impl LiveReadings {
@@ -242,18 +250,26 @@ impl LiveReadings {
         // matters.
         self.dead_letters.rate(now);
 
+        let relayed = self.relayed.rate(now);
+        let processed = self.processed.rate(now);
+
         vec![
-            Gauge {
-                id: "g-relayed".to_owned(),
-                value: format!("{:.2}", self.relayed.rate(now)),
-                warn: false,
-            },
-            Gauge {
-                id: "g-processed".to_owned(),
-                value: format!("{:.2}", self.processed.rate(now)),
-                warn: false,
-            },
+            self.live_gauge("g-relayed", relayed),
+            self.live_gauge("g-processed", processed),
         ]
+    }
+
+    /// One live reading, with the direction it moved since the last one.
+    fn live_gauge(&mut self, id: &'static str, rate: f64) -> Gauge {
+        let trend = trend_between(self.previous_rates.get(id).copied(), rate);
+        self.previous_rates.insert(id, rate);
+
+        Gauge {
+            id: id.to_owned(),
+            value: format!("{rate:.2}"),
+            warn: false,
+            trend,
+        }
     }
 }
 
@@ -314,7 +330,21 @@ pub fn same_picture(left: &Snapshot, right: &Snapshot) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collect::{Alarm, Node, Status};
+    use crate::collect::{Alarm, Node, Status, Trend, Verdict};
+
+    /// A verdict for fixtures that are not about the verdict.
+    ///
+    /// These tests are about which plane owns which reading. The verdict has to
+    /// be present for the snapshot to compile and is otherwise beside the point.
+    fn a_normal_verdict() -> Verdict {
+        Verdict {
+            level: Status::Healthy,
+            headline: "Normal".to_owned(),
+            detail: "everything is fine".to_owned(),
+            action: String::new(),
+            runbook: String::new(),
+        }
+    }
 
     fn at(seconds: i64) -> DateTime<Utc> {
         DateTime::from_timestamp(1_786_000_000 + seconds, 0).expect("a valid timestamp")
@@ -468,14 +498,17 @@ mod tests {
                     id: "g-relayed".to_owned(),
                     value: "9.99".to_owned(),
                     warn: false,
+                    trend: Trend::Steady,
                 },
                 Gauge {
                     id: "g-accepted".to_owned(),
                     value: "1.00".to_owned(),
                     warn: false,
+                    trend: Trend::Steady,
                 },
             ],
             alarms: vec![],
+            verdict: a_normal_verdict(),
             sources_ok: true,
         }
     }
@@ -486,6 +519,7 @@ mod tests {
                 id: "g-relayed".to_owned(),
                 value: "3.33".to_owned(),
                 warn: false,
+                trend: Trend::Steady,
             },
             // Not owned by the tap. Present here on purpose: the merge must
             // refuse it even when it is offered.
@@ -493,6 +527,7 @@ mod tests {
                 id: "g-accepted".to_owned(),
                 value: "0.00".to_owned(),
                 warn: false,
+                trend: Trend::Steady,
             },
         ]
     }

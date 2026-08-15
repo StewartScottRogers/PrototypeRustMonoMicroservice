@@ -260,18 +260,38 @@
             .rd       { cursor:help; }
             .rd-box   { fill:#16232e; stroke-width:1.1; }
             .rd-val   { font-family:inherit; font-size:13px; letter-spacing:.02em; }
+            .rd-trend { font-family:inherit; font-size:9px; }
             .rd:hover .rd-box, .rd:focus .rd-box { fill:#1e3241; stroke-width:1.8; }
             .rd:focus { outline:none; }
           </style>
 
-          <!-- ============ ALARM BANNER ============ -->
-          <rect id="alarm-box" x="40" y="20" width="1136" height="52" rx="2"
+          <!-- ============ THE VERDICT ============
+               Not a list of alarms. One conclusion, and what to do about it.
+
+               A control room is not a place to do arithmetic. Five rates that
+               should match, a queue depth, a percentile and nine lamps are a
+               puzzle; somebody arriving at an alarm needs the answer first and
+               the evidence second. Everything below this banner is the
+               evidence. -->
+          <rect id="alarm-box" x="40" y="16" width="1136" height="78" rx="2"
                 fill="#0f1a14" stroke="#2fd98a" stroke-width="1.4"/>
-          <circle id="alarm-led" cx="70" cy="46" r="7" fill="#2fd98a"/>
-          <text id="alarm-title" x="96" y="51" font-size="12" fill="#2fd98a" letter-spacing="2.4">ALL CLEAR</text>
-          <line x1="212" y1="30" x2="212" y2="62" class="rule"/>
-          <text id="alarm-text" x="234" y="51" font-size="13" fill="#c7d8e4">no active alarms</text>
-          <text id="alarm-count" x="1152" y="51" font-size="11" fill="#6d8496" text-anchor="end">0 ACTIVE</text>
+          <circle id="alarm-led" cx="70" cy="40" r="7" fill="#2fd98a"/>
+          <text id="alarm-title" x="96" y="45" font-size="12" fill="#2fd98a" letter-spacing="2.4">NORMAL</text>
+          <line x1="240" y1="26" x2="240" y2="84" class="rule"/>
+          <!-- Filled with tspan lines from script. Text in scalable vector
+               graphics does not wrap, so a long sentence runs straight off the
+               end of its box and over whatever is there - which is exactly what
+               the first version of this banner did. -->
+          <text id="alarm-text" x="262" y="38" font-size="13" fill="#c7d8e4">no active alarms</text>
+          <text id="alarm-count" x="1152" y="38" font-size="11" fill="#6d8496" text-anchor="end">0 ALARMS</text>
+
+          <!-- What to do, and where it is written down. Empty when there is
+               nothing to do, because an instruction that is always on screen
+               stops being read. -->
+          <text id="verdict-action" x="262" y="84" font-size="12" fill="#ffb020"></text>
+          <a id="verdict-runbook-link" href="/runbook" target="_blank" rel="noopener noreferrer">
+            <text id="verdict-runbook" x="1152" y="84" font-size="11" fill="#34c3e0" text-anchor="end"></text>
+          </a>
 
           <!-- ================================================================
                BAND 1 — accept and store. Reads left to right.
@@ -771,12 +791,126 @@
       if (badge) {
         badge.setAttribute("stroke", reading.warn ? COLOURS.degraded : badge.getAttribute("data-hue"));
       }
+
+      paintTrend(reading);
     }
     showAbsorbing(gauges);
 
     // A reading on screen inside the hover panel has just gone stale. Only a
     // reading: a box's description does not change when a number does.
     if (openTarget && openTarget.classList.contains("rd")) fillTip(openTarget);
+  }
+
+  /// Breaks a sentence across lines inside one text element.
+  ///
+  /// Text in scalable vector graphics does not wrap. A long sentence runs
+  /// straight off the end of its box and over whatever is beside it, which is
+  /// what the first version of this banner did to the alarm count.
+  ///
+  /// Breaking on a character budget rather than by measuring is exact here:
+  /// this panel is set in a monospace face, so every character is the same
+  /// width and the budget is arithmetic rather than a guess.
+  function wrapInto(element, sentence, perLine, x, firstY, lineHeight) {
+    element.textContent = "";
+
+    const words = sentence.split(" ");
+    const lines = [];
+    let line = "";
+
+    for (const word of words) {
+      if (line && (line + " " + word).length > perLine) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = line ? line + " " + word : word;
+      }
+    }
+    if (line) lines.push(line);
+
+    const namespace = "http://www.w3.org/2000/svg";
+    lines.forEach((content, index) => {
+      const span = document.createElementNS(namespace, "tspan");
+      span.setAttribute("x", x);
+      span.setAttribute("y", firstY + index * lineHeight);
+      span.textContent = content;
+      element.appendChild(span);
+    });
+  }
+
+  /// Paints the one conclusion, and what to do about it.
+  ///
+  /// The alarm count stays, in small text on the right: the verdict is the
+  /// headline, and the count is how much else is going on behind it.
+  function paintVerdict(verdict, alarms) {
+    const hue = COLOURS[verdict.level] || COLOURS.unknown;
+    const box = byId("alarm-box"), lamp = byId("alarm-led"),
+          title = byId("alarm-title"), text = byId("alarm-text"),
+          count = byId("alarm-count"), action = byId("verdict-action"),
+          runbook = byId("verdict-runbook"), link = byId("verdict-runbook-link");
+
+    box.setAttribute("stroke", hue);
+    box.setAttribute("fill", ALARM_GROUND[verdict.level] || ALARM_GROUND.degraded);
+    lamp.setAttribute("fill", hue);
+    title.setAttribute("fill", hue);
+    title.textContent = verdict.headline.toUpperCase();
+    wrapInto(text, verdict.detail, 104, 262, 38, 16);
+    text.setAttribute("fill", verdict.level === "healthy" ? "#c7d8e4" : "#e6eef4");
+
+    action.textContent = verdict.action;
+    action.setAttribute("fill", hue);
+
+    // The link is only useful when it goes somewhere specific. A permanent
+    // "see the runbook" is furniture, and furniture is not read.
+    if (verdict.runbook) {
+      runbook.textContent = "runbook: " + verdict.runbook + " ↗";
+      link.setAttribute("href", "/runbook#" + verdict.runbook);
+    } else {
+      runbook.textContent = "";
+    }
+
+    count.textContent = alarms.length + (alarms.length === 1 ? " ALARM" : " ALARMS");
+  }
+
+  // Which way a reading moved, as one character.
+  //
+  // A single number cannot say whether something is failing or recovering, and
+  // that is the whole difference between "watch it" and "act now". Nothing is
+  // drawn for steady or unknown: a mark that is always present carries no
+  // information, and an unknown direction must not be drawn as a steady one.
+  const TREND_MARK = { rising: "▲", falling: "▼", steady: "", unknown: "" };
+
+  /// Creates the mark for a reading the first time it is needed.
+  ///
+  /// Built here rather than written into the drawing fourteen times, so a new
+  /// reading gets its arrow by existing rather than by somebody remembering.
+  function trendMark(readingId) {
+    const existing = byId("trend-" + readingId);
+    if (existing) return existing;
+
+    const box = byId("box-" + readingId);
+    if (!box) return null;
+
+    const namespace = "http://www.w3.org/2000/svg";
+    const mark = document.createElementNS(namespace, "text");
+    mark.setAttribute("id", "trend-" + readingId);
+    mark.setAttribute("class", "rd-trend");
+    // Just outside the badge's right edge, vertically centred on it.
+    mark.setAttribute("x", Number(box.getAttribute("x")) + Number(box.getAttribute("width")) + 4);
+    mark.setAttribute("y", Number(box.getAttribute("y")) + 14);
+    mark.setAttribute("aria-hidden", "true");
+    box.parentNode.appendChild(mark);
+    return mark;
+  }
+
+  function paintTrend(reading) {
+    const mark = trendMark(reading.id);
+    if (!mark) return;
+
+    mark.textContent = TREND_MARK[reading.trend] || "";
+    // Rising is not good or bad on its own — a rising throughput is healthy and
+    // a rising queue is not — so the mark takes the reading's own colour and
+    // says only which way, never whether.
+    mark.setAttribute("fill", reading.warn ? COLOURS.degraded : "#5c7382");
   }
 
   function paintAlarms(alarms) {
@@ -816,7 +950,14 @@
   function paint(state) {
     paintNodes(state.nodes);
     paintGauges(state.gauges);
-    paintAlarms(state.alarms);
+    // The verdict replaces the alarm banner when the service sends one. The
+    // fallback keeps an older service working rather than blanking the banner,
+    // which is the same tolerance the consumer contract tests require.
+    if (state.verdict) {
+      paintVerdict(state.verdict, state.alarms);
+    } else {
+      paintAlarms(state.alarms);
+    }
   }
 
   // ---------------------------------------------------------------------------

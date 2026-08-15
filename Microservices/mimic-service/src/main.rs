@@ -71,6 +71,9 @@ const CONSOLE_HTML: &str = include_str!("../assets/console.html");
 /// containing them.
 const GENERATORS_HTML: &str = include_str!("../assets/generators.html");
 
+/// What to do about each verdict the panel can reach.
+const RUNBOOK_HTML: &str = include_str!("../assets/runbook.html");
+
 /// The written walkthrough, served so the console can frame it.
 ///
 /// A `file://` link would work on this machine only, and could not be framed
@@ -169,6 +172,7 @@ async fn main() -> Result<()> {
         .route("/mimic", get(panel))
         .route("/docs", get(docs))
         .route("/generators", get(generators))
+        .route("/runbook", get(runbook))
         .route("/api/state", get(state))
         // Registered *before* `.with_state`. Adding a stateful route after that
         // line produces one of axum's long "the trait Handler is not
@@ -279,6 +283,16 @@ async fn docs() -> Html<&'static str> {
 /// Watching the effect while causing it is the whole point.
 async fn generators() -> Html<&'static str> {
     Html(GENERATORS_HTML)
+}
+
+/// The runbook: one entry per verdict the panel can reach.
+///
+/// Served from this service rather than kept as a document elsewhere so the
+/// banner can link straight to the entry matching what it just decided —
+/// `/runbook#behind` rather than "the runbook is in the wiki somewhere". A
+/// runbook nobody can find during an incident is a runbook nobody has.
+async fn runbook() -> Html<&'static str> {
+    Html(RUNBOOK_HTML)
 }
 
 /// Serves the current snapshot as JavaScript Object Notation.
