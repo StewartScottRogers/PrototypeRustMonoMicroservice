@@ -142,10 +142,16 @@ from the paths the commit touched, not from the scope.
    release pull request that also ran `cargo update` would make a version bump
    indistinguishable from a dependency change in review.
 
-8. **The two jobs must not overlap.** `release` depends on `release-pr`, and the
-   whole workflow uses `concurrency: release` with `cancel-in-progress: false`.
-   Both write to the repository; cancelling mid-way through tagging would leave
-   some crates released and others not.
+8. **The two jobs must not overlap, and must not depend on each other.**
+   `release` declares `needs: release-pr` for ordering and `if: always()` so
+   that ordering is all it means. The two answer unrelated questions — one
+   proposes the next version numbers, the other tags the ones already merged —
+   and tagging is not made wrong by a pull request that could not be opened.
+   Dropping the `if: always()` is how the first release produced no tags at all.
+   The whole workflow also uses `concurrency: release` with
+   `cancel-in-progress: false`, because both jobs write to the repository and
+   cancelling mid-way through tagging would leave some crates released and
+   others not.
 
 ## Adding a crate
 
@@ -172,6 +178,7 @@ nothing depends on it, so a version number for it would mean nothing.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
+| `Failed to open PR … 403 … GitHub Actions is not permitted to create or approve pull requests` | The repository setting of that name is off, and the workflow fell back to `GITHUB_TOKEN` | Set `RELEASE_PLZ_TOKEN` (rule 1) — a personal access token is not subject to that setting. Turning the setting on instead lets the pull request be created, but it still arrives with no checks and so still cannot be merged. Tagging is unaffected either way: the `release` job runs regardless, per rule 8. |
 | Release pull request has no status checks | Opened with `GITHUB_TOKEN` | Set `RELEASE_PLZ_TOKEN` (rule 1). To unstick the existing one, close and reopen it. |
 | Merged the release pull request, no tag appeared | The `release` job did not run, or ran before the merge commit landed | Re-run the `Release` workflow on `master`; it is safe to run repeatedly and is a no-op when versions and tags already match. |
 | Tag exists, no image published | Tag pushed with `GITHUB_TOKEN`, so no workflow triggered | Set `RELEASE_PLZ_TOKEN`. To publish the image now, run `Image` from `workflow_dispatch` on that tag. |
