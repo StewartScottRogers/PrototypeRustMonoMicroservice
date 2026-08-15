@@ -81,6 +81,14 @@ from the paths the commit touched, not from the scope.
    **Workflows: read and write** (the last is needed only if a release ever
    touches a file under `.github/workflows/`).
 
+   That command **prompts** for the value, so it needs a real terminal. Run
+   through anything that pipes or redirects its input — a script, a tool, the
+   `!` prefix in a Claude Code session — it reads end-of-input, stores an
+   *empty* secret, and exits successfully with no output. The secret then
+   exists, lists normally, and the job stays skipped. The repository's
+   **Settings → Secrets and variables → Actions** page avoids the whole class
+   of problem, and is the better route when a person is doing this once.
+
    Until that secret exists the `release-pr` job is **skipped**, not run and
    failed. That is deliberate: without the token it can only produce a 403, and
    a workflow that reports red on every push teaches everybody to ignore the
@@ -181,6 +189,7 @@ nothing depends on it, so a version number for it would mean nothing.
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `Release pull request` shows as skipped on every run | `RELEASE_PLZ_TOKEN` is not set, so the job is skipped by design (rule 1) | Set the secret. Nothing else is wrong, and tagging is already working. |
+| The secret **exists** and the job is *still* skipped — `Check for a release token` prints `present: false` | The stored value is empty. An empty secret and a missing secret are indistinguishable to a workflow, and `gh secret list` shows both the same way | Almost always `gh secret set` run without a real terminal attached: it prompts for the value, reads end-of-input immediately, stores an empty string, and exits silently and successfully. Anything that pipes or redirects its input does this — including running it through the `!` prefix inside a Claude Code session. Set it from the repository's **Settings → Secrets and variables → Actions** page instead, or from a terminal window opened outside any tool. Confirm with a re-run: `present` must read `true`. |
 | `This run likely failed because of a workflow file issue`, and **no job ran at all** | Something in the file references a context where GitHub does not allow it. The one that caused this: `secrets` in a job-level `if` | Never test a secret in a job-level `if` — the `secrets` context is not available there, and using it invalidates the whole file, taking tagging down with it. Ask the question in a *step* and pass the answer out as a job output, which is what the `token` job exists for. |
 | `Failed to open PR … 403 … GitHub Actions is not permitted to create or approve pull requests` | The token exists but is not permitted — a `GITHUB_TOKEN` reached the job, or the personal access token lacks **Pull requests: write** | Check the token's scopes. A personal access token is not subject to the repository's "Allow GitHub Actions to create and approve pull requests" setting; turning that setting on instead lets the pull request be created, but it still arrives with no checks and so still cannot be merged. |
 | Release pull request has no status checks | Opened with `GITHUB_TOKEN` | Set `RELEASE_PLZ_TOKEN` (rule 1). To unstick the existing one, close and reopen it. |
