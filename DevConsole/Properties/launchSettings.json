@@ -23,6 +23,14 @@
       "commandName": "Project",
       "commandLineArgs": "replay --dry-run"
     },
+    "Dev Gource (watch the history)": {
+      "commandName": "Project",
+      "commandLineArgs": "gource"
+    },
+    "Dev Gource (render a video)": {
+      "commandName": "Project",
+      "commandLineArgs": "gource --video"
+    },
     "Dev Stop": {
       "commandName": "Project",
       "commandLineArgs": "stop"

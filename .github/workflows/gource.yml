@@ -1,0 +1,111 @@
+name: Gource
+
+# Renders the repository's history as a video with Gource and leaves it as a
+# build artifact. Nothing gates on it - this is a picture of the work, not a
+# check on it, so it is deliberately not part of any "OK" aggregate.
+#
+# The settings come from gource.conf at the repository root, the same file
+# DevGource.cmd reads, so this video matches what you see on your own machine.
+
+on:
+  # The usual way to get one: run it by hand from the Actions tab.
+  workflow_dispatch:
+    inputs:
+      seconds-per-day:
+        description: "How long one day of history lasts on screen. Overrides gource.conf."
+        required: false
+        default: ""
+  push:
+    # Every release tag gets a video of everything up to it. Same shape as the
+    # Image workflow trigger - release-plz writes tags as <crate>-v<version>.
+    tags: ["*-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gource-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    name: Render the history
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The whole history, because the whole history is the subject. A
+          # shallow checkout would render a single commit.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Three packages, and all three are needed:
+      #   gource  the renderer
+      #   ffmpeg  compresses the raw frame stream into a playable file
+      #   xvfb    a display that exists only in memory. Gource draws through
+      #           OpenGL and refuses to start without a display, and a build
+      #           runner has no screen attached.
+      - name: Install Gource, ffmpeg and a virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gource ffmpeg xvfb
+
+      - name: Render
+        env:
+          # Read through the environment rather than interpolated into the
+          # script below: a workflow input is text somebody typed, and `${{ }}`
+          # inside a run block is pasted in before the shell ever sees it.
+          SECONDS_PER_DAY: ${{ inputs.seconds-per-day }}
+        run: |
+          # No `pipefail` here, deliberately. Gource is finished the moment it
+          # has written its last frame, and can be torn down while ffmpeg is
+          # still draining the pipe - a non-zero status from the left-hand side
+          # of the pipeline that means nothing went wrong. The video either
+          # exists at the end or it does not, and `if-no-files-found: error` on
+          # the upload step is what actually decides that.
+          set -eu
+
+          override=()
+          if [ -n "$SECONDS_PER_DAY" ]; then
+            override=(--seconds-per-day "$SECONDS_PER_DAY")
+          fi
+
+          # The history is handed to Gource on its standard input rather than
+          # letting Gource run git itself. Gource can do that, but it does so by
+          # starting a child process, which fails with a bare "Access is denied"
+          # anywhere without a real console attached. Doing it here means this
+          # workflow and DevGource.cmd run the identical command, so a video
+          # rendered on a runner cannot quietly differ from one rendered on a
+          # laptop. The format string is the one Gource asks git for anyway.
+          #
+          # xvfb-run starts the in-memory display, runs one command against it,
+          # and tears it down. --auto-servernum picks a free display number,
+          # which matters because a runner may already have one. The screen size
+          # has to be at least the render size or Gource is silently clipped.
+          git log --pretty=format:user:%aN%n%ct --reverse --raw \
+                  --encoding=UTF-8 --no-renames --no-show-signature \
+          | xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            gource \
+              --load-config gource.conf \
+              --log-format git \
+              -1920x1080 \
+              --stop-at-end \
+              --output-framerate 60 \
+              --output-ppm-stream - \
+              "${override[@]}" \
+              - \
+          | ffmpeg -y -loglevel warning \
+              -r 60 -f image2pipe -vcodec ppm -i - \
+              -vcodec libx264 -preset medium -pix_fmt yuv420p -crf 23 \
+              gource.mp4
+
+          ls -lh gource.mp4
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gource-${{ github.ref_name }}
+          path: gource.mp4
+          # A video is large and quickly stale. Long enough to download and
+          # share, short enough not to accumulate.
+          retention-days: 30
+          if-no-files-found: error

@@ -38,6 +38,7 @@ Services:
 - `compose.yaml` and the `Dev*.cmd` scripts — the local stack: 6 services, NATS, Jaeger, Prometheus, Grafana, PostgreSQL, Redis. Grafana on port 3000, Jaeger on port 16686. `DevDemo.cmd` narrates the whole demonstration. See `.claude/skills/dev-environment/SKILL.md` and `.claude/skills/messaging-and-eventing/SKILL.md`.
 - `.github/workflows/ci.yml`, `.github/actions/setup-rust` and `.github/scripts/affected-crates.sh` — the continuous integration gate. Rules and failure modes are documented in `.claude/skills/rust-ci-gate/SKILL.md`; read that before changing continuous integration.
 - `Dockerfile` and `.github/workflows/image.yml` — one parameterised image build for every service, published to the GitHub Container Registry with a provenance attestation and a Trivy vulnerability scan. See `.claude/skills/rust-service-image/SKILL.md`.
+- `gource.conf`, `DevGource.cmd` and `.github/workflows/gource.yml` — the history, replayed as an animated tree by Gource. `DevGource.cmd` opens a live window; `DevGource.cmd --video` renders `gource.mp4` through ffmpeg; the workflow renders the same video on a release tag or on demand and leaves it as a build artifact. All three read the one settings file, so the rendered video matches the window. Gource is not installed by any of this — `winget install acaudwell.Gource`. Nothing gates on it; it is a picture of the work, not a check on it. The history is piped in from `git log` rather than letting Gource start git itself, because that child process fails with a bare "Access is denied" wherever there is no real console attached. **The live window is the reliable local path; the workflow is the reliable video path** — rendering to a file on Windows depends on an uncompressed frame stream surviving a pipe, which it does not always do.
 - `.github/workflows/security.yml` — CodeQL (public repositories only), the zizmor workflow audit, and the gitleaks secret scan. Every third-party action is pinned to a commit hash; see `.claude/skills/gh-supply-chain/SKILL.md` before adding one.
 - `rust-toolchain.toml`, `clippy.toml`, `deny.toml`, `.config/nextest.toml` — tool configuration, all at the workspace root.
 - `DemoRustMonoMicroservice.slnx` — Visual Studio solution, in the Extensible Markup Language `.slnx` format rather than the older `.sln` format. Holds a "Solution Items" folder for the root-level files plus the `Microservices` project.
@@ -62,6 +63,7 @@ DevStart.cmd     # whole stack: 5 services, NATS, Jaeger, PostgreSQL, Redis
 DevDemo.cmd      # run and narrate the whole demonstration
 DevReplay.cmd    # put dead letters back on the queue (--dry-run to look first)
 DevConsole.cmd   # open every graphical interface in one page; starts the stack if it is down
+DevGource.cmd    # replay the repository history as an animated tree (--video writes gource.mp4)
 DevStatus.cmd    # what is running, and is it healthy
 DevLogs.cmd      # follow logs
 DevStop.cmd      # stop, keep everything
