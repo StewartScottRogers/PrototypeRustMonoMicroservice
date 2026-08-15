@@ -18,14 +18,13 @@
   *{box-sizing:border-box}
   body{
     background:var(--void); color:var(--ink); font-family:var(--mono);
-    margin:0; padding:.7rem .75rem 1.5rem; font-size:.72rem; line-height:1.5;
+    margin:0; padding:.6rem .7rem; font-size:.72rem; line-height:1.45;
     -webkit-font-smoothing:antialiased;
   }
   h2{
     font-size:.66rem; letter-spacing:.2em; text-transform:uppercase;
-    color:var(--far); font-weight:500; margin:0 0 .5rem;
+    color:var(--far); font-weight:500; margin:.7rem 0 .35rem;
   }
-  .group{margin-bottom:1rem}
 
   /* ---- the running banner: always first, so it is never missed ---- */
   .running{
@@ -48,8 +47,22 @@
   button:disabled{opacity:.4; cursor:not-allowed}
   button.on{border-color:var(--sync); color:var(--sync); background:#0a1f28}
 
-  .stack{display:grid; gap:.3rem}
+  .stack{display:grid; gap:.25rem}
   .stack.two{grid-template-columns:1fr 1fr}
+  .stack.three{grid-template-columns:1fr 1fr 1fr}
+  .stack button{padding:.35rem .4rem; font-size:.66rem; text-align:center}
+
+  /* The page is a column: the controls may scroll if the window is very short,
+     the stop control never does. */
+  html,body{height:100%}
+  body{display:flex; flex-direction:column}
+  .scrollable{flex:1; min-height:0; overflow-y:auto}
+  .pinned{padding-top:.5rem; border-top:1px solid var(--edge); margin-top:.5rem}
+
+  .fields{display:grid; grid-template-columns:1fr 1fr; gap:.4rem}
+  /* Bottom-aligned, so a label that wraps onto two lines does not leave its
+     input sitting lower than the one beside it. */
+  .fields > div{display:flex; flex-direction:column; justify-content:flex-end}
 
   /* The stop control is the one thing that must always be reachable. */
   .stop{
@@ -68,26 +81,21 @@
   }
   input:focus-visible,button:focus-visible{outline:2px solid var(--sync); outline-offset:1px}
 
-  /* Everything past this line is meant to hurt. It is marked rather than
-     prevented: breaking the stack on purpose is the point of the exercise. */
-  .danger-rule{
-    display:flex; align-items:center; gap:.5rem; margin:.9rem 0 .5rem;
-    color:var(--warn); font-size:.6rem; letter-spacing:.16em; text-transform:uppercase;
-  }
-  .danger-rule::before,.danger-rule::after{
-    content:""; flex:1; height:1px; background:var(--warn); opacity:.35;
-  }
-  .danger button{border-color:#5a3a08; color:var(--warn)}
-  .danger button:hover{border-color:var(--warn); background:#241703; color:#ffd27a}
+  /* The destructive shapes sit in the same grid as the rest, marked amber
+     rather than fenced off below a rule. Fencing cost a heading, a rule and a
+     paragraph of height, which pushed the stop control off the bottom - and
+     breaking the stack on purpose is the point here, not an accident to guard
+     against. */
+  button.hurts{border-color:#5a3a08; color:var(--warn)}
+  button.hurts:hover{border-color:var(--warn); background:#241703; color:#ffd27a}
 
-  .note{color:var(--far); font-size:.62rem; line-height:1.45; margin:.4rem 0 0}
+  .note{color:var(--far); font-size:.6rem; line-height:1.4; margin:.3rem 0 0}
   .tally{
-    display:grid; grid-template-columns:1fr 1fr 1fr; gap:.3rem; margin-top:.5rem;
-    font-variant-numeric:tabular-nums;
+    display:flex; justify-content:space-between; gap:.4rem; margin-top:.4rem;
+    font-size:.6rem; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--far); font-variant-numeric:tabular-nums;
   }
-  .tally div{border:1px solid var(--edge); background:var(--panel); padding:.3rem .4rem}
-  .tally b{display:block; font-size:.85rem; font-weight:500; color:var(--ink)}
-  .tally span{font-size:.58rem; letter-spacing:.1em; text-transform:uppercase; color:var(--far)}
+  .tally b{color:var(--ink); font-weight:500; font-size:.72rem}
   .tally .bad b{color:var(--fail)}
 </style>
 </head>
@@ -96,42 +104,38 @@
 <!-- Always first. A generator running unnoticed is the one genuinely
      dangerous state this page can be in. -->
 <div class="running" id="running">
-  <div class="running-what" id="running-what">—</div>
-  <div class="running-stat" id="running-stat">—</div>
+  <div class="running-what" id="running-what">&mdash;</div>
+  <div class="running-stat" id="running-stat">&mdash;</div>
 </div>
 
-<div class="group">
+<div class="scrollable">
   <h2>What to send</h2>
-  <div class="stack" id="actions"></div>
-  <p class="note" id="action-note">—</p>
-</div>
+  <div class="stack two" id="actions"></div>
+  <p class="note" id="action-note">&mdash;</p>
 
-<div class="group">
   <h2>How to send it</h2>
-  <div class="stack two" id="shapes"></div>
+  <div class="stack three" id="shapes"></div>
+  <p class="note">Amber is meant to hurt. Hold the pointer over one to see what it does.</p>
 
-  <label for="rate">Requests per second</label>
-  <input type="number" id="rate" value="5" min="1" max="100000" step="1">
-
-  <label for="seconds">Seconds (0 runs until stopped)</label>
-  <input type="number" id="seconds" value="30" min="0" max="86400" step="1">
-
-  <div class="danger-rule">beyond here it will hurt</div>
-  <div class="stack danger" id="danger"></div>
-  <p class="note">
-    A browser will not exceed roughly a few hundred requests each second, whatever
-    is asked for here: it holds only about six connections open to one address.
-    That is enough to outrun the workers and build a backlog. It is not enough to
-    be unlimited.
-  </p>
+  <div class="fields">
+    <div>
+      <label for="rate">Per second</label>
+      <input type="number" id="rate" value="5" min="1" max="100000" step="1">
+    </div>
+    <div>
+      <label for="seconds">Seconds (0 = forever)</label>
+      <input type="number" id="seconds" value="30" min="0" max="86400" step="1">
+    </div>
+  </div>
 </div>
 
-<div class="group">
+<!-- Pinned. Whatever else scrolls, the way to make it stop does not. -->
+<div class="pinned">
   <button class="stop" id="stop">Stop everything</button>
   <div class="tally">
-    <div><b id="t-sent">0</b><span>sent</span></div>
-    <div><b id="t-ok">0</b><span>accepted</span></div>
-    <div class="bad"><b id="t-fail">0</b><span>refused</span></div>
+    <span><b id="t-sent">0</b> sent</span>
+    <span><b id="t-ok">0</b> accepted</span>
+    <span class="bad"><b id="t-fail">0</b> refused</span>
   </div>
 </div>
 
@@ -173,6 +177,7 @@
   // reachable without a special case for either.
   const ACTIONS = {
     order: {
+      short: "The full asynchronous path, end to end.",
       label: "Order",
       note: "The full asynchronous path: gateway, outbox row in the same transaction, relay, broker, worker, then both subscribers.",
       request: (n) => ({
@@ -181,6 +186,7 @@
       }),
     },
     poison: {
+      short: "Fails three times, then parks on the dead-letter stream.",
       label: "Poison order",
       note: "An order the worker cannot process. Three attempts, then it is parked on the dead-letter stream and the panel raises an alarm.",
       request: (n) => ({
@@ -189,6 +195,7 @@
       }),
     },
     duplicate: {
+      short: "Same identifier every time. Accepted repeatedly, worked once.",
       label: "Duplicate order",
       note: "The same order identifier every time. The gateway accepts each one; the worker must do the work only once. Watch orders accepted climb while orders processed does not.",
       request: () => ({
@@ -201,6 +208,7 @@
       }),
     },
     relay: {
+      short: "Synchronous only. Nothing reaches the broker.",
       label: "Synchronous call",
       note: "The simple example: gateway calls the echo service and waits. Nothing reaches the broker, so the flow lines stay dark and only the top band lights.",
       request: (n) => ({ path: "/relay", body: { message: "generated-" + n } }),
@@ -209,12 +217,24 @@
 
   // The shape of the traffic. Each returns a plan the scheduler runs.
   const SHAPES = {
-    once:   { label: "Once",   danger: false, plan: () => ({ kind: "burst", count: 1 }) },
-    steady: { label: "Steady", danger: false, plan: (rate, secs) => ({ kind: "rate", rate, seconds: secs }) },
-    burst:  { label: "Burst",  danger: false, plan: (rate) => ({ kind: "burst", count: rate }) },
-    ramp:   { label: "Ramp",   danger: false, plan: (rate, secs) => ({ kind: "ramp", rate, seconds: secs || 30 }) },
-    flood:  { label: "Flood",  danger: true,  plan: (rate, secs) => ({ kind: "rate", rate: Math.max(rate, 500), seconds: secs }) },
-    max:    { label: "As fast as possible", danger: true, plan: () => ({ kind: "max" }) },
+    once:   { label: "Once",   danger: false,
+              note: "One request.",
+              plan: () => ({ kind: "burst", count: 1 }) },
+    steady: { label: "Steady", danger: false,
+              note: "The chosen rate, held for the chosen number of seconds.",
+              plan: (rate, secs) => ({ kind: "rate", rate, seconds: secs }) },
+    burst:  { label: "Burst",  danger: false,
+              note: "One clump: as many requests as the rate, all at once, then quiet.",
+              plan: (rate) => ({ kind: "burst", count: rate }) },
+    ramp:   { label: "Ramp",   danger: false,
+              note: "Climbs from nothing to the chosen rate over the chosen seconds. Use it to find where the stack bends.",
+              plan: (rate, secs) => ({ kind: "ramp", rate, seconds: secs || 30 }) },
+    flood:  { label: "Flood",  danger: true,
+              note: "At least five hundred a second, whatever the rate says. Meant to hurt.",
+              plan: (rate, secs) => ({ kind: "rate", rate: Math.max(rate, 500), seconds: secs }) },
+    max:    { label: "Max",    danger: true,
+              note: "No timer at all: keeps every connection the browser will give busy. Around five hundred a second, and the hardest this page can push.",
+              plan: () => ({ kind: "max" }) },
   };
 
   const byId = (id) => document.getElementById(id);
@@ -238,20 +258,26 @@
       const b = document.createElement("button");
       b.textContent = spec.label;
       b.className = key === action ? "on" : "";
-      b.onclick = () => { action = key; renderActions(); byId("action-note").textContent = spec.note; };
+      b.title = spec.note;
+      b.onclick = () => { action = key; renderActions(); };
       host.appendChild(b);
     }
-    byId("action-note").textContent = ACTIONS[action].note;
+    byId("action-note").textContent = ACTIONS[action].short;
   }
 
   function renderShapes() {
-    const safe = byId("shapes"), danger = byId("danger");
-    safe.innerHTML = ""; danger.innerHTML = "";
+    const host = byId("shapes");
+    host.innerHTML = "";
     for (const [key, spec] of Object.entries(SHAPES)) {
       const b = document.createElement("button");
       b.textContent = spec.label;
+      // Marked rather than fenced off. A separate section below a rule cost
+      // enough height to push the stop control out of view, which is a worse
+      // outcome than an amber button being one click away.
+      if (spec.danger) b.className = "hurts";
+      b.title = spec.note;
       b.onclick = () => start(key);
-      (spec.danger ? danger : safe).appendChild(b);
+      host.appendChild(b);
     }
   }
 

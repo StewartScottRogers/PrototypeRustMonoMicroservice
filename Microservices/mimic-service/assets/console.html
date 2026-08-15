@@ -45,7 +45,7 @@
   main{display:grid;grid-template-columns:var(--rail) 1fr;min-height:0}
   nav{
     background:var(--ground);border-right:1px solid var(--edge);
-    padding:.75rem .5rem;display:flex;flex-direction:column;gap:.15rem;overflow-y:auto;
+    padding:.75rem .5rem;display:flex;flex-direction:column;gap:.15rem;overflow-y:auto;min-height:0;
   }
   .grp{font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--far);padding:.9rem .6rem .35rem}
   button.tab{
@@ -62,7 +62,10 @@
      Deliberately not a tab. A control that replaced the mimic panel would hide
      the effect at the exact moment it was caused, and the whole value here is
      turning the knob while watching the needle. */
-  .drive{border-top:1px solid var(--edge);margin-top:.6rem;display:flex;flex-direction:column;min-height:0}
+  /* Fills whatever rail is left below the tabs. Fixed height left dead space
+     under the frame while its own contents scrolled - and a stop control you
+     have to scroll to reach is not a stop control. */
+  .drive{border-top:1px solid var(--edge);margin-top:.6rem;display:flex;flex-direction:column;flex:1;min-height:0}
   .drive-head{
     display:flex;align-items:baseline;gap:.5rem;
     font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--far);
@@ -70,7 +73,7 @@
   }
   .drive-head .live{margin-left:auto;color:var(--ok);display:none}
   .drive-head .live.on{display:inline}
-  #drive{width:100%;border:0;background:var(--ground);display:block;height:31rem;min-height:24rem}
+  #drive{width:100%;border:0;background:var(--ground);display:block;flex:1;min-height:23rem}
 
   .rail-foot{margin-top:auto;padding:.75rem .6rem;font-size:.65rem;line-height:1.6;color:var(--far);border-top:1px solid var(--edge)}
   .rail-foot a{color:var(--dim)}
