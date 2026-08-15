@@ -1,0 +1,129 @@
+name: Deploy
+
+# Promotes one already-published image to production.
+#
+# There is no server, cluster or cloud account in this project, so "deploy"
+# here means what it honestly can mean: after a human approves, the tag
+# `production` starts pointing at one specific image digest whose build
+# provenance has been verified. Nothing is copied, rebuilt or restarted -
+# promotion is a decision about which digest is blessed, recorded where anyone
+# can read it.
+#
+# What that buys, which is not nothing:
+#   * a human gate, enforced by the environment rather than by convention
+#   * only a release tag may be promoted, never a branch
+#   * the attestation is checked *before* promotion, so a digest that cannot be
+#     proved to have come from this repository never gets the name
+#   * GitHub records a deployment, so the history of what was promoted, when
+#     and by whom is queryable rather than remembered
+#
+# Deliberately manual. A release should not promote itself; deciding to deploy
+# is the one step in this pipeline that ought to need a person.
+#
+# See .claude/skills/gh-deploy-env/SKILL.md, which also records what is waiting
+# on there being an actual place to deploy to.
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Which service to promote"
+        required: true
+        type: choice
+        options:
+          - audit-service
+          - dlq-replay
+          - echo-service
+          - gateway-service
+          - mimic-service
+          - notifier-service
+          - outbox-relay
+          - worker-service
+      version:
+        description: "Version to promote, for example 0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# One promotion at a time, and never cancelled. Cancelling half-way through
+# retagging would leave `production` pointing at neither the old digest nor the
+# new one.
+concurrency:
+  group: deploy-${{ inputs.service }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote ${{ inputs.service }} ${{ inputs.version }}
+    runs-on: ubuntu-latest
+
+    # This one line is the gate. It makes GitHub pause the job until a required
+    # reviewer approves, refuse to run it from a reference the environment does
+    # not allow, and record a deployment against the environment either way.
+    # `.github/scripts/arm-environments.sh` is what puts those rules in place;
+    # without it the environment is created implicitly with no protection at
+    # all, and this job runs straight through.
+    environment:
+      name: production
+      url: https://github.com/${{ github.repository }}/pkgs/container/${{ inputs.service }}
+
+    permissions:
+      contents: read
+      packages: write # retag the image in the registry
+      id-token: write # verify the build provenance attestation
+      attestations: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # the GitHub Container Registry rejects any uppercase character in a
+      # repository name, and this org/repository has several. Never interpolate
+      # github.repository into an image name directly.
+      - name: Compute image name
+        id: name
+        env:
+          SERVICE: ${{ inputs.service }}
+        run: |
+          owner_repo="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner_repo}/${SERVICE}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Before promoting, prove the thing being promoted is ours. The image
+      # workflow signs "this digest came from this workflow, repository and
+      # commit"; this is the half of that arrangement that reads it. An
+      # attestation nobody ever verifies is a signature on a document nobody
+      # opens.
+      - name: Verify the build provenance
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          gh attestation verify "oci://${IMAGE}:${VERSION}" --repo "$GITHUB_REPOSITORY"
+
+      # Retag by digest rather than by pulling and pushing. `imagetools create`
+      # adds a name to an existing manifest in the registry without moving any
+      # layers, so promotion cannot accidentally publish a *different* build of
+      # the same version - there is only ever the one digest.
+      - name: Point production at this digest
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          digest="$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" \
+                    --format '{{ .Manifest.Digest }}')"
+          echo "Promoting ${IMAGE}@${digest}"
+          docker buildx imagetools create --tag "${IMAGE}:production" "${IMAGE}@${digest}"
+          echo "${IMAGE}:production -> ${digest}" >> "$GITHUB_STEP_SUMMARY"

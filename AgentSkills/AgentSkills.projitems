@@ -25,6 +25,7 @@
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\orchestration-agent\SKILL.md" Link="orchestration-agent\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\microservice-agent-team\SKILL.md" Link="microservice-agent-team\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\rust-release\SKILL.md" Link="rust-release\SKILL.md" />
+    <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\gh-deploy-env\SKILL.md" Link="gh-deploy-env\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\platform-agent-team\SKILL.md" Link="platform-agent-team\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\pipeline-agent-team\SKILL.md" Link="pipeline-agent-team\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\observability-agent-team\SKILL.md" Link="observability-agent-team\SKILL.md" />

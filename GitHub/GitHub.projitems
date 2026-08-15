@@ -28,5 +28,8 @@
     <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\smoke-test.sh" Link="scripts\smoke-test.sh" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\arm-gates.sh" Link="scripts\arm-gates.sh" />
     <None Include="$(MSBuildThisFileDirectory)..\.github\rulesets\master.json" Link="rulesets\master.json" />
+    <None Include="$(MSBuildThisFileDirectory)..\.github\workflows\deploy.yml" Link="workflows\deploy.yml" />
+    <None Include="$(MSBuildThisFileDirectory)..\.github\scripts\arm-environments.sh" Link="scripts\arm-environments.sh" />
+    <None Include="$(MSBuildThisFileDirectory)..\.github\environments\production.json" Link="environments\production.json" />
   </ItemGroup>
 </Project>
