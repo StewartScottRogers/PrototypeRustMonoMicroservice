@@ -10,7 +10,10 @@ resolver = "3"
 members = ["Microservices/*", "e2e"]
 
 [workspace.package]
-version = "0.1.0"
+# There is deliberately no `version` here. Each crate declares its own, so
+# release-plz can bump one service without dragging the other eleven along with
+# it. Everything below is genuinely shared and is inherited by every crate with
+# `key.workspace = true`.
 edition = "2024"
 license = "MIT"
 publish = false

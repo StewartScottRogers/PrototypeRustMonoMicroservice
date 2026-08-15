@@ -6,7 +6,12 @@ name = "gateway-service"
 description = "Front door for the stack: takes a request and calls echo-service over the internal network."
 # `x.workspace = true` inherits the value from the root Cargo.toml, so version
 # and licence are set once for the whole repository instead of per crate.
-version.workspace = true
+# Each crate carries its own version number instead of inheriting the workspace
+# one. release-plz bumps only the crates whose files actually changed, so
+# worker-service can reach 0.2.0 while echo-service stays at 0.1.0. Note that
+# inheritance is per key: every other line here still says `key.workspace = true`,
+# meaning "take this value from [workspace.package] in the root Cargo.toml".
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true

@@ -24,5 +24,6 @@
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\messaging-and-eventing\SKILL.md" Link="messaging-and-eventing\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\orchestration-agent\SKILL.md" Link="orchestration-agent\SKILL.md" />
     <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\microservice-agent-team\SKILL.md" Link="microservice-agent-team\SKILL.md" />
+    <None Include="$(MSBuildThisFileDirectory)..\.claude\skills\rust-release\SKILL.md" Link="rust-release\SKILL.md" />
   </ItemGroup>
 </Project>

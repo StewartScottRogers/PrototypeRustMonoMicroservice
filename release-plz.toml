@@ -1,0 +1,85 @@
+# release-plz configuration.
+#
+# release-plz reads the git history since each crate's last tag, decides the next
+# version number from the Conventional Commits in it, and does two separate jobs:
+#
+#   1. "release-pr"  - opens (or updates) a single pull request that bumps the
+#                      version numbers and writes the changelog entries. Nothing
+#                      is released while this pull request is open; it is the
+#                      human review step.
+#   2. "release"     - once that pull request is merged, creates the git tag and
+#                      the GitHub Release for every crate whose version changed.
+#
+# Both are driven by .github/workflows/release.yml. The full reasoning, and what
+# to do when a release does not happen, is in .claude/skills/rust-release/SKILL.md.
+
+[workspace]
+# Write a CHANGELOG.md next to each crate's Cargo.toml.
+changelog_update = true
+
+# Publishing to crates.io is off. Every crate in this workspace sets
+# `publish = false`, because these are private services rather than libraries
+# anyone installs. release-plz would skip them anyway; saying so here means the
+# workflow log states the reason instead of leaving it to be inferred.
+publish = false
+
+# cargo-semver-checks compares a crate's public application programming interface
+# against the last version *published to a registry*. Nothing here is published,
+# so there is no baseline to compare against and the check can only fail
+# confusingly. The contract tests in each crate are what guard compatibility.
+semver_check = false
+
+# Do not run `cargo update` as part of the release pull request. Dependabot owns
+# dependency bumps, and mixing them into a release pull request makes it
+# impossible to tell a version bump from a dependency change in review.
+dependencies_update = false
+
+# Tag and release names. The tag shape matters beyond cosmetics: the Image
+# workflow triggers on "*-v*" and parses the crate name back out of it to decide
+# which single service to build. Changing this shape breaks that; see
+# .github/workflows/image.yml.
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_name = "{{ package }} {{ version }}"
+git_tag_enable = true
+git_release_enable = true
+
+# Labels on the release pull request, so it is obvious at a glance in the list
+# that this one was written by a machine and only needs review.
+pr_labels = ["release"]
+
+# The end-to-end crate is a test harness. It ships in no image, nobody depends
+# on it, and a version number for it would mean nothing. It still gets a version
+# field in its manifest because cargo requires one - it just never moves.
+[[package]]
+name = "e2e"
+release = false
+changelog_update = false
+git_tag_enable = false
+git_release_enable = false
+
+# How commit messages become changelog entries. The left-hand side of each line
+# is a Conventional Commits type, which is the prefix on a commit subject:
+# "feat: add a retry budget" produces a "Added" entry and bumps the minor
+# version; "fix: ..." produces "Fixed" and bumps the patch version; a "!" after
+# the type, or a "BREAKING CHANGE:" footer, bumps the major version.
+#
+# A commit whose subject matches none of these is left out of the changelog and
+# does not move any version number. That is why a change worth releasing needs a
+# conventional subject line.
+[changelog]
+protect_breaking_commits = true
+
+commit_parsers = [
+    { message = "^feat", group = "Added" },
+    { message = "^fix", group = "Fixed" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Changed" },
+    { message = "^doc", group = "Documentation" },
+    { message = "^test", group = "Testing" },
+    { message = "^ci|^build", group = "Build and continuous integration" },
+    # Dependabot and release-plz's own commits would otherwise fill the
+    # changelog with noise nobody reads.
+    { message = "^chore\\(deps\\)", skip = true },
+    { message = "^chore\\(release\\)", skip = true },
+    { message = "^chore", group = "Miscellaneous" },
+]

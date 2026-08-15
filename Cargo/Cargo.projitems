@@ -22,6 +22,7 @@
     <None Include="$(MSBuildThisFileDirectory)..\rust-toolchain.toml" Link="rust-toolchain.toml" />
     <None Include="$(MSBuildThisFileDirectory)..\clippy.toml" Link="clippy.toml" />
     <None Include="$(MSBuildThisFileDirectory)..\deny.toml" Link="deny.toml" />
+    <None Include="$(MSBuildThisFileDirectory)..\release-plz.toml" Link="release-plz.toml" />
     <None Include="$(MSBuildThisFileDirectory)..\.config\nextest.toml" Link=".config\nextest.toml" />
   </ItemGroup>
 </Project>
