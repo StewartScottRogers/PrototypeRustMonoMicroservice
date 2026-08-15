@@ -16,7 +16,23 @@ members = ["Microservices/*", "e2e"]
 # `key.workspace = true`.
 edition = "2024"
 license = "MIT"
-publish = false
+
+# "Publishable only to a registry called `internal`" - and no registry by that
+# name is configured anywhere, so `cargo publish` stops with:
+#
+#   error: registry index was not found in any configuration: `internal`
+#
+# The obvious spelling of that intent is `publish = false`, and it was that
+# until the release pipeline was wired up. The reason it is not any more:
+# release-plz skips a package cargo marks as unpublishable *entirely*, so with
+# `false` here the release job reported "nothing to release" forever and no
+# crate was ever tagged. A named registry that does not exist is refused by
+# cargo just as firmly, while leaving the package visible to release-plz.
+#
+# `cargo publish` is switched off a second time in release-plz.toml, which is
+# what actually stops the pipeline attempting it. This line is the guard
+# against a person running it by hand.
+publish = ["internal"]
 repository = "https://github.com/StewartScottRogers/PrototypeRustMonoMicroservice"
 
 # Single source of truth for dependency versions. Crates opt in with

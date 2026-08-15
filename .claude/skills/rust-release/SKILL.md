@@ -14,7 +14,7 @@ description: >
 
 `release-plz.toml` and `.github/workflows/release.yml` turn merged commits into
 version numbers, changelogs, git tags, GitHub Releases, and versioned container
-images. Nothing is published to crates.io — every crate sets `publish = false`.
+images. Nothing is published to any registry.
 
 > **Write everything out in full.** No acronyms or abbreviations in prose. A
 > widely recognised acronym may follow the full term in parentheses on first
@@ -104,18 +104,35 @@ from the paths the commit touched, not from the scope.
    warning rather than failing. The version comes from the discover job output
    instead.
 
-5. **cargo-semver-checks is off, deliberately.** It compares a crate's public
+5. **`publish = false` in a manifest stops releases dead — do not put it back.**
+   The root `Cargo.toml` says `publish = ["internal"]`, and no registry called
+   `internal` is configured anywhere, so `cargo publish` refuses with
+   `registry index was not found in any configuration`. The obvious spelling
+   is `publish = false`, and that is what it was until the first release ran
+   and produced `nothing to release` with no tags at all: release-plz skips a
+   package that cargo marks unpublishable *entirely*, tags included. The
+   named-registry form is refused by cargo just as firmly while leaving the
+   package visible to release-plz. `publish = false` in `release-plz.toml` is
+   the separate switch that stops the pipeline running `cargo publish`.
+
+   `git_only = true` belongs to the same fix. Without it release-plz asks
+   crates.io which version is current, and for a crate that was never
+   published the answer is nothing, so it concludes there is nothing to do.
+   `git_only` points that question at the git tags instead, which is where the
+   answer lives for this workspace.
+
+6. **cargo-semver-checks is off, deliberately.** It compares a crate's public
    application programming interface against the last version *published to a
    registry*. Nothing here is published, so there is no baseline and the check
    can only mislead. The contract tests in each crate are what guard
    compatibility between services; see `.claude/skills/orchestration-agent/`.
 
-6. **Dependency bumps stay out of the release pull request.**
+7. **Dependency bumps stay out of the release pull request.**
    `dependencies_update = false`. Dependabot owns dependency changes, and a
    release pull request that also ran `cargo update` would make a version bump
    indistinguishable from a dependency change in review.
 
-7. **The two jobs must not overlap.** `release` depends on `release-pr`, and the
+8. **The two jobs must not overlap.** `release` depends on `release-pr`, and the
    whole workflow uses `concurrency: release` with `cancel-in-progress: false`.
    Both write to the repository; cancelling mid-way through tagging would leave
    some crates released and others not.
@@ -124,7 +141,8 @@ from the paths the commit touched, not from the scope.
 
 Nothing to change here — release-plz reads `cargo metadata`, so a new crate is
 picked up automatically. Give it a literal `version = "0.1.0"` rather than
-`version.workspace = true`, per rule 2.
+`version.workspace = true`, per rule 2, and leave `publish.workspace = true`
+alone so it inherits the named-registry guard, per rule 5.
 
 To keep a crate out of releases, add a block to `release-plz.toml`:
 
@@ -147,6 +165,7 @@ nothing depends on it, so a version number for it would mean nothing.
 | Release pull request has no status checks | Opened with `GITHUB_TOKEN` | Set `RELEASE_PLZ_TOKEN` (rule 1). To unstick the existing one, close and reopen it. |
 | Merged the release pull request, no tag appeared | The `release` job did not run, or ran before the merge commit landed | Re-run the `Release` workflow on `master`; it is safe to run repeatedly and is a no-op when versions and tags already match. |
 | Tag exists, no image published | Tag pushed with `GITHUB_TOKEN`, so no workflow triggered | Set `RELEASE_PLZ_TOKEN`. To publish the image now, run `Image` from `workflow_dispatch` on that tag. |
+| Release job logs `nothing to release` and creates no tags | A manifest went back to `publish = false`, or `git_only = true` was removed from `release-plz.toml` | Rule 5. Confirm with `release-plz release --dry-run --backend github --git-token "$(gh auth token)"`, which lists every tag it would create. |
 | No release pull request at all after a merge | No commit since the last tag had a conventional subject | Land a commit with a `feat:` or `fix:` subject, or bump the version in the manifest by hand and let `release` pick it up. |
 | One crate bumped, its dependents did not | Expected when only that crate's files changed | If a dependent must move too, that is a `fix(dependent): ...` commit against it. |
 | Every crate bumped at once | A commit touched a shared crate under `Microservices/*-core`, so every dependent moved | Correct behaviour. Keep shared-crate changes in their own pull request so the blast radius is visible in review. |
