@@ -16,40 +16,106 @@
     --mono:"Cascadia Mono",Consolas,"SF Mono",Menlo,"DejaVu Sans Mono",monospace;
   }
   *{box-sizing:border-box}
+
+  /* ---- fitting the screen ----
+     This panel is read on a laptop and on a television across a room, and the
+     drawing is one fixed-proportion picture either way. So the page is a column
+     that owns the whole viewport, and the drawing takes whatever is left after
+     the status strip and the caption - constrained by *height* as well as
+     width, because a picture that fills the width of a 4K screen is far taller
+     than that screen and would have to be scrolled to be seen.
+
+     There is deliberately no maximum width. The old one stopped at 96rem, so
+     everything past about 1536 pixels was black margin.
+
+     `dvh` rather than `vh` so a mobile browser's disappearing toolbar does not
+     leave the drawing cropped by the height of a toolbar that is not there. */
+  html,body{height:100%}
   body{background:var(--void);color:var(--ink);font-family:var(--mono);margin:0;
-       padding:1.25rem 1rem 2.5rem;-webkit-font-smoothing:antialiased}
-  .shell{max-width:96rem;margin:0 auto}
+       padding:clamp(.5rem,1.2vh,1.25rem) clamp(.5rem,1vw,1.25rem);
+       -webkit-font-smoothing:antialiased;
+       min-height:100dvh;display:flex;flex-direction:column}
+  .shell{flex:1;min-height:0;display:flex;flex-direction:column;margin:0 auto;width:100%}
+
+  /* Type that scales with the screen. The middle term of each clamp is tied to
+     the viewport, so the wording beside a drawing four times larger grows with
+     it rather than staying 11-pixel type in the corner of a television. */
   .strip{display:flex;flex-wrap:wrap;gap:.4rem 1.5rem;justify-content:space-between;align-items:baseline;
-         padding:.3rem .4rem .7rem;font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--far)}
+         padding:.3rem .4rem .7rem;font-size:clamp(.7rem,.55vw,1.15rem);
+         letter-spacing:.16em;text-transform:uppercase;color:var(--far)}
   .strip b{color:var(--dim);font-weight:500}
   #connection{color:var(--ok)}
   #connection.stale{color:var(--warn)}
   /* Positioned, because the hover panel below is placed against it. */
   .bezel{position:relative;background:var(--ground);border:1px solid var(--edge);
-         box-shadow:0 0 0 1px #000 inset,0 24px 60px -30px #000;padding:.5rem}
+         box-shadow:0 0 0 1px #000 inset,0 24px 60px -30px #000;
+         padding:clamp(.35rem,.5vw,1rem);
+         flex:1;min-height:0;display:flex;flex-direction:column}
 
-  /* The hover panel.
-     A badge on the drawing has room for four characters, so everything the old
-     instrument tile said in full - the name, the unit, and what the number
-     actually counts - is said here instead, on demand.
+  /* The hover panel. One component, two jobs:
+
+       on a reading  the name, the unit, and what the number counts
+       on a box      what the thing is, what it does here, and where to read
+                     more about it
+
      Deliberately not the browser's own `title` tooltip: that takes about a
      second to appear, cannot be styled, and would arrive in the operating
-     system's font in the middle of a control room. `pointer-events:none` keeps
-     it from stealing the hover that summoned it. */
-  .tip{position:absolute;z-index:5;pointer-events:none;max-width:22rem;
+     system's font in the middle of a control room.
+
+     It is *not* `pointer-events:none`, which is what a tooltip usually wants.
+     The box panels carry links, and a link nobody can reach is decoration. The
+     script gives the pointer a moment to travel from the box into the panel
+     instead, and the panel cancels its own closing timer on the way in. */
+  /* Sized against the viewport like everything else here. A panel in fixed
+     pixels would be a postage stamp beside a drawing scaled up four times on a
+     television, and the whole point of it is that it can be read. */
+  .tip{position:absolute;z-index:5;max-width:min(34ch,80vw);
        background:var(--panel-2);border:1px solid var(--edge-hi);
-       box-shadow:0 14px 34px -14px #000;padding:.5rem .65rem;
-       font-size:.72rem;line-height:1.55}
+       box-shadow:0 14px 34px -14px #000;padding:clamp(.5rem,.6vw,1rem) clamp(.6rem,.75vw,1.2rem);
+       font-size:clamp(.72rem,.62vw,1.1rem);line-height:1.55}
   .tip[hidden]{display:none}
-  .tip-t{color:var(--dim);letter-spacing:.14em;text-transform:uppercase;font-size:.6rem}
-  .tip-v{font-size:1.05rem;margin:.2rem 0 .25rem;color:var(--ink)}
-  .tip-v span{font-size:.68rem;color:var(--far);letter-spacing:.08em}
-  .tip-n{color:var(--dim);text-wrap:pretty}
-  .scroller{overflow-x:auto}
-  svg{display:block;width:100%;min-width:72rem;height:auto}
-  figure{margin:0}
-  figcaption{margin:.9rem auto 0;max-width:60rem;font-size:.78rem;line-height:1.7;
-             color:var(--dim);text-align:center;text-wrap:pretty}
+  .tip-t{color:var(--ink);font-size:1.18em;letter-spacing:.02em}
+  .tip-k{color:var(--far);letter-spacing:.14em;text-transform:uppercase;font-size:.78em;
+         margin-bottom:.15rem}
+  .tip-v{font-size:1.45em;margin:.2rem 0 .25rem;color:var(--ink)}
+  .tip-v[hidden]{display:none}
+  .tip-v span{font-size:.62em;color:var(--far);letter-spacing:.08em}
+  .tip-n{color:var(--dim);text-wrap:pretty;margin-top:.35rem}
+  /* Links are stacked rather than run together: each is a different place to
+     go, and a row of them reads as one sentence with slashes in it. */
+  .tip-ls{margin-top:.5rem;border-top:1px solid var(--edge);padding-top:.4rem;
+          display:flex;flex-direction:column;gap:.2rem}
+  .tip-ls[hidden]{display:none}
+  .tip-ls a{color:var(--sync);text-decoration:none;font-size:.92em}
+  .tip-ls a:hover,.tip-ls a:focus{text-decoration:underline}
+  .tip-ls a::after{content:" ↗";color:var(--far)}
+  /* The scroller only ever scrolls on a window too narrow to read the drawing
+     at all. The floor is 40rem rather than the old 72rem: between those two
+     widths the drawing now shrinks to fit instead of growing a scrollbar. */
+  /* Column, not row: the caption is a sibling of the figure rather than a child
+     of it, so a row here puts the prose down the side of the drawing. */
+  .scroller{overflow-x:auto;flex:1;min-height:0;display:flex;flex-direction:column}
+  figure{margin:0;flex:1;min-width:40rem;min-height:0;
+         display:flex;flex-direction:column;align-items:center;justify-content:center}
+
+  /* The drawing takes the height it is given and derives its own width from
+     the viewBox proportions, so the element *is* the picture rather than a
+     wider box with the picture floating in the middle of it.
+
+     Which way round matters. `width:100%; height:auto` was the obvious
+     spelling and is wrong on a wide screen: `aspect-ratio` sets the height,
+     `max-height` then clamps it, and the width - being explicitly 100% - stays
+     where it was. Measured on a 2691-pixel screen that produced an element
+     2622 by 1202 for a picture whose proportions are 1224 by 800. Deriving the
+     width instead leaves nothing to disagree about, and `max-width` still
+     takes over on a window too narrow for the height to be the binding
+     constraint. */
+  svg{display:block;width:auto;height:100%;max-width:100%;margin:0 auto;
+      aspect-ratio:1224/800}
+
+  figcaption{margin:clamp(.5rem,1.2vh,1.4rem) auto 0;max-width:80ch;
+             font-size:clamp(.7rem,.62vw,1.15rem);line-height:1.7;
+             color:var(--dim);text-align:center;text-wrap:pretty;flex:none}
   figcaption b{color:var(--ink);font-weight:500}
   /* A line that just carried a message. Brightening and thickening is
      length-independent, which matters because most connectors here are 32 to 52
@@ -97,15 +163,17 @@
          it when a keyboard user tabs onto a reading, which is the same moment a
          pointer user would see it appear. -->
     <div class="tip" id="tip" role="status" aria-live="polite" hidden>
+      <div class="tip-k" id="tip-kind"></div>
       <div class="tip-t" id="tip-title"></div>
-      <div class="tip-v"><b id="tip-value">&mdash;</b> <span id="tip-unit"></span></div>
+      <div class="tip-v" id="tip-figure"><b id="tip-value">&mdash;</b> <span id="tip-unit"></span></div>
       <div class="tip-n" id="tip-note"></div>
+      <div class="tip-ls" id="tip-links"></div>
     </div>
 
     <div class="scroller">
       <figure>
         <svg viewBox="0 0 1224 800" role="img"
-             aria-label="Live mimic of the order platform, read left to right and then top to bottom. Band one: clients post an order to the gateway service, which writes the order and an outbox row to PostgreSQL in one transaction, and the outbox relay polls that table. The gateway also calls the echo service synchronously as a simple example. Band two: the relay publishes to the command stream on the NATS JetStream broker, one worker replica takes each command, and the worker publishes to the event stream, which every subscriber reads a copy of, so both the notifier and the audit service react. Redis holds idempotency keys and repeatedly failing messages are parked on the dead-letter stream. Band three: Prometheus, Grafana and Jaeger receive telemetry from every service. Each live rate or depth is shown as a small figure attached to the thing it measures; pausing the pointer on one names it in full.">
+             aria-label="Live mimic of the order platform, read left to right and then top to bottom. Band one: clients post an order to the gateway service, which writes the order and an outbox row to PostgreSQL in one transaction, and the outbox relay polls that table. The gateway also calls the echo service synchronously as a simple example. Band two: the relay publishes to the command stream on the NATS JetStream broker, one worker replica takes each command, and the worker publishes to the event stream, which every subscriber reads a copy of, so both the notifier and the audit service react. Redis holds idempotency keys and repeatedly failing messages are parked on the dead-letter stream. Band three: Prometheus, Grafana and Jaeger receive telemetry from every service. Each live rate or depth is shown as a small figure attached to the thing it measures. Pausing the pointer on a figure names it in full; pausing on any box explains what that thing is and links to its documentation. Every box is reachable with the Tab key, and Enter follows its first link.">
           <defs>
             <marker id="arrow-sync" viewBox="0 0 10 10" refX="9" refY="5"
                     markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -153,6 +221,19 @@
                overrides a presentation attribute - which is exactly how the
                amber warning colour on the old instrument tiles was silently
                lost. */
+            /* ---- the boxes ----
+               Each box is a group rather than a loose rectangle and two labels,
+               so its border, its fill and its name are one hover target: a
+               reader pointing at the word "Grafana" is pointing at Grafana.
+
+               Brightened on hover rather than restroked, because the worker's
+               border already carries its health and a class rule would paint
+               over an amber or red one at exactly the moment somebody is
+               pointing at it to find out what is wrong. */
+            .nd       { cursor:help; }
+            .nd:hover, .nd:focus { filter:brightness(1.35); }
+            .nd:focus { outline:none; }
+
             .rd       { cursor:help; }
             .rd-box   { fill:#16232e; stroke-width:1.1; }
             .rd-val   { font-family:inherit; font-size:13px; letter-spacing:.02em; }
@@ -177,18 +258,22 @@
           <line x1="392" y1="102" x2="1060" y2="102" class="rule"/>
 
           <!-- clients -->
-          <rect class="box-soft" x="48" y="136" width="150" height="66" rx="2"/>
-          <text class="name" x="123" y="167" text-anchor="middle">Clients</text>
-          <text class="sub"  x="123" y="185" text-anchor="middle">curl or DevDemo.cmd</text>
+          <g class="nd" tabindex="0" data-what="clients">
+            <rect class="box-soft" x="48" y="136" width="150" height="66" rx="2"/>
+            <text class="name" x="123" y="167" text-anchor="middle">Clients</text>
+            <text class="sub"  x="123" y="185" text-anchor="middle">curl or DevDemo.cmd</text>
+          </g>
 
           <path id="edge-clients-gateway" class="line-sync" d="M198 169 H244" marker-end="url(#arrow-sync)"/>
           <text class="edge-lbl" x="221" y="128" text-anchor="middle">place an order</text>
 
           <!-- gateway -->
-          <rect class="box" x="248" y="136" width="196" height="66" rx="2"/>
-          <circle id="led-gateway" cx="428" cy="150" r="6" fill="#5a6b78"/>
-          <text class="name" x="336" y="167" text-anchor="middle">Gateway service</text>
-          <text id="txt-gateway" class="detail" x="336" y="185" text-anchor="middle">&mdash;</text>
+          <g class="nd" tabindex="0" data-what="gateway">
+            <rect class="box" x="248" y="136" width="196" height="66" rx="2"/>
+            <circle id="led-gateway" cx="428" cy="150" r="6" fill="#5a6b78"/>
+            <text class="name" x="336" y="167" text-anchor="middle">Gateway service</text>
+            <text id="txt-gateway" class="detail" x="336" y="185" text-anchor="middle">&mdash;</text>
+          </g>
 
           <g class="rd" tabindex="0" role="img"
              data-title="Orders accepted" data-unit="per second"
@@ -203,19 +288,23 @@
           <text class="edge-lbl" x="466" y="128" text-anchor="middle">one transaction</text>
 
           <!-- postgresql -->
-          <rect class="box" x="493" y="136" width="196" height="66" rx="2"/>
-          <circle id="led-postgres" cx="673" cy="150" r="6" fill="#5a6b78"/>
-          <text class="name" x="581" y="167" text-anchor="middle">PostgreSQL</text>
-          <text id="txt-postgres" class="detail" x="581" y="185" text-anchor="middle">&mdash;</text>
+          <g class="nd" tabindex="0" data-what="postgres">
+            <rect class="box" x="493" y="136" width="196" height="66" rx="2"/>
+            <circle id="led-postgres" cx="673" cy="150" r="6" fill="#5a6b78"/>
+            <text class="name" x="581" y="167" text-anchor="middle">PostgreSQL</text>
+            <text id="txt-postgres" class="detail" x="581" y="185" text-anchor="middle">&mdash;</text>
+          </g>
 
           <path id="edge-postgres-relay" class="line-sync" d="M689 169 H734" marker-end="url(#arrow-sync)"/>
           <text class="edge-lbl" x="711" y="128" text-anchor="middle">poll</text>
 
           <!-- outbox relay -->
-          <rect class="box" x="738" y="136" width="196" height="66" rx="2"/>
-          <circle id="led-relay" cx="918" cy="150" r="6" fill="#5a6b78"/>
-          <text class="name" x="826" y="167" text-anchor="middle">Outbox relay</text>
-          <text id="txt-relay" class="detail" x="826" y="185" text-anchor="middle">&mdash;</text>
+          <g class="nd" tabindex="0" data-what="relay">
+            <rect class="box" x="738" y="136" width="196" height="66" rx="2"/>
+            <circle id="led-relay" cx="918" cy="150" r="6" fill="#5a6b78"/>
+            <text class="name" x="826" y="167" text-anchor="middle">Outbox relay</text>
+            <text id="txt-relay" class="detail" x="826" y="185" text-anchor="middle">&mdash;</text>
+          </g>
 
           <g class="rd" tabindex="0" role="img"
              data-title="Outbox rows published" data-unit="per second"
@@ -229,37 +318,47 @@
           <path id="edge-relay-tag" class="line-async" d="M934 169 H986" marker-end="url(#arrow-async)"/>
 
           <!-- continuation tag: leaves band 1 -->
-          <rect class="box-tag" x="990" y="146" width="70" height="46" rx="2"/>
-          <text class="tag-txt" x="1025" y="175" text-anchor="middle">&#9660; A</text>
+          <g class="nd" tabindex="0" data-what="tag">
+            <rect class="box-tag" x="990" y="146" width="70" height="46" rx="2"/>
+            <text class="tag-txt" x="1025" y="175" text-anchor="middle">&#9660; A</text>
+          </g>
 
           <!-- the synchronous side example, hanging below the gateway -->
           <path id="edge-gateway-echo" class="line-sync" d="M336 202 V244" marker-end="url(#arrow-sync)"/>
           <text class="edge-lbl" x="348" y="226">a simpler example</text>
 
-          <rect class="box-soft" x="248" y="248" width="196" height="56" rx="2"/>
-          <circle id="led-echo" cx="428" cy="262" r="6" fill="#5a6b78"/>
-          <text class="name" x="336" y="274" text-anchor="middle">Echo service</text>
-          <text id="txt-echo" class="detail" x="336" y="292" text-anchor="middle">&mdash;</text>
+          <g class="nd" tabindex="0" data-what="echo">
+            <rect class="box-soft" x="248" y="248" width="196" height="56" rx="2"/>
+            <circle id="led-echo" cx="428" cy="262" r="6" fill="#5a6b78"/>
+            <text class="name" x="336" y="274" text-anchor="middle">Echo service</text>
+            <text id="txt-echo" class="detail" x="336" y="292" text-anchor="middle">&mdash;</text>
+          </g>
 
           <!-- ================================================================
                BAND 2 — the broker. Reads left to right, fans out downward.
                ================================================================ -->
           <text class="band-n" x="48" y="352">2</text>
           <text class="band" x="70" y="352">HAND OFF THROUGH THE BROKER &#183; NATS JETSTREAM</text>
-          <circle id="led-nats" cx="500" cy="348" r="6" fill="#5a6b78"/>
-          <text id="txt-nats" class="detail" x="516" y="352">&mdash;</text>
+          <g class="nd" tabindex="0" data-what="nats">
+            <circle id="led-nats" cx="500" cy="348" r="6" fill="#5a6b78"/>
+            <text id="txt-nats" class="detail" x="516" y="352">&mdash;</text>
+          </g>
           <line x1="620" y1="348" x2="1060" y2="348" class="rule"/>
 
           <!-- continuation tag: enters band 2 -->
-          <rect class="box-tag" x="48" y="378" width="70" height="46" rx="2"/>
-          <text class="tag-txt" x="83" y="407" text-anchor="middle">A &#9654;</text>
+          <g class="nd" tabindex="0" data-what="tag">
+            <rect class="box-tag" x="48" y="378" width="70" height="46" rx="2"/>
+            <text class="tag-txt" x="83" y="407" text-anchor="middle">A &#9654;</text>
+          </g>
 
           <path id="edge-tag-commands" class="line-async" d="M118 401 H150" marker-end="url(#arrow-async)"/>
 
           <!-- command stream -->
-          <rect class="box" x="154" y="372" width="218" height="66" rx="2"/>
-          <text class="name" x="263" y="399" text-anchor="middle">Command stream</text>
-          <text class="sub"  x="263" y="417" text-anchor="middle">one shared consumer</text>
+          <g class="nd" tabindex="0" data-what="commands">
+            <rect class="box" x="154" y="372" width="218" height="66" rx="2"/>
+            <text class="name" x="263" y="399" text-anchor="middle">Command stream</text>
+            <text class="sub"  x="263" y="417" text-anchor="middle">one shared consumer</text>
+          </g>
 
           <g class="rd" tabindex="0" role="img"
              data-title="Waiting for the worker" data-unit="messages"
@@ -279,7 +378,12 @@
                but the worker is the one node with lines leaving underneath it -
                to Redis and to the dead-letter stream - and a badge there would
                sit on top of them. -->
-          <rect id="node-worker" class="box" x="426" y="372" width="196" height="66" rx="2"/>
+          <g class="nd" tabindex="0" data-what="worker">
+            <rect id="node-worker" class="box" x="426" y="372" width="196" height="66" rx="2"/>
+            <circle id="led-worker" cx="606" cy="386" r="6" fill="#5a6b78"/>
+            <text class="name" x="514" y="399" text-anchor="middle">Worker</text>
+            <text id="txt-worker" class="detail" x="514" y="417" text-anchor="middle">&mdash;</text>
+          </g>
 
           <g class="rd" tabindex="0" role="img"
              data-title="Orders processed" data-unit="per second"
@@ -298,26 +402,27 @@
             <text class="rd-val" id="g-p99" data-hue="#34c3e0" fill="#34c3e0"
                   x="568" y="376" text-anchor="middle">&mdash;</text>
           </g>
-          <circle id="led-worker" cx="606" cy="386" r="6" fill="#5a6b78"/>
-          <text class="name" x="514" y="399" text-anchor="middle">Worker</text>
-          <text id="txt-worker" class="detail" x="514" y="417" text-anchor="middle">&mdash;</text>
 
           <path id="edge-worker-events" class="line-async" d="M622 405 H672" marker-end="url(#arrow-async)"/>
           <text class="edge-lbl" x="647" y="364" text-anchor="middle">publishes</text>
 
           <!-- event stream -->
-          <rect class="box" x="676" y="372" width="218" height="66" rx="2"/>
-          <text class="name" x="785" y="399" text-anchor="middle">Event stream</text>
-          <text class="sub"  x="785" y="417" text-anchor="middle">every subscriber gets a copy</text>
+          <g class="nd" tabindex="0" data-what="events">
+            <rect class="box" x="676" y="372" width="218" height="66" rx="2"/>
+            <text class="name" x="785" y="399" text-anchor="middle">Event stream</text>
+            <text class="sub"  x="785" y="417" text-anchor="middle">every subscriber gets a copy</text>
+          </g>
 
           <!-- fan-out: two consumers, stacked so the copy is visible -->
           <path id="edge-events-notifier" class="line-async" d="M894 391 H932 V366 H976" marker-end="url(#arrow-async)"/>
           <path id="edge-events-audit" class="line-async" d="M894 419 H932 V452 H976" marker-end="url(#arrow-async)"/>
 
-          <rect class="box" x="980" y="336" width="196" height="60" rx="2"/>
-          <circle id="led-notifier" cx="1160" cy="350" r="6" fill="#5a6b78"/>
-          <text class="name" x="1068" y="363" text-anchor="middle">Notifier</text>
-          <text id="txt-notifier" class="detail" x="1068" y="381" text-anchor="middle">&mdash;</text>
+          <g class="nd" tabindex="0" data-what="notifier">
+            <rect class="box" x="980" y="336" width="196" height="60" rx="2"/>
+            <circle id="led-notifier" cx="1160" cy="350" r="6" fill="#5a6b78"/>
+            <text class="name" x="1068" y="363" text-anchor="middle">Notifier</text>
+            <text id="txt-notifier" class="detail" x="1068" y="381" text-anchor="middle">&mdash;</text>
+          </g>
 
           <g class="rd" tabindex="0" role="img"
              data-title="Notifications handled" data-unit="per second"
@@ -328,10 +433,12 @@
                   x="1020" y="400" text-anchor="middle">&mdash;</text>
           </g>
 
-          <rect class="box" x="980" y="422" width="196" height="60" rx="2"/>
-          <circle id="led-audit" cx="1160" cy="436" r="6" fill="#5a6b78"/>
-          <text class="name" x="1068" y="449" text-anchor="middle">Audit</text>
-          <text id="txt-audit" class="detail" x="1068" y="467" text-anchor="middle">&mdash;</text>
+          <g class="nd" tabindex="0" data-what="audit">
+            <rect class="box" x="980" y="422" width="196" height="60" rx="2"/>
+            <circle id="led-audit" cx="1160" cy="436" r="6" fill="#5a6b78"/>
+            <text class="name" x="1068" y="449" text-anchor="middle">Audit</text>
+            <text id="txt-audit" class="detail" x="1068" y="467" text-anchor="middle">&mdash;</text>
+          </g>
 
           <g class="rd" tabindex="0" role="img"
              data-title="Audit events handled" data-unit="per second"
@@ -352,14 +459,18 @@
           <path id="edge-worker-deadletter" class="line-async" d="M568 438 V486" marker-end="url(#arrow-async)"/>
           <text class="edge-lbl" x="700" y="470">after three failed attempts</text>
 
-          <rect class="box-soft" x="330" y="490" width="180" height="54" rx="2"/>
-          <circle id="led-redis" cx="494" cy="503" r="5" fill="#5a6b78"/>
-          <text class="name" x="420" y="515" text-anchor="middle">Redis</text>
-          <text id="txt-redis" class="detail" x="420" y="532" text-anchor="middle">&mdash;</text>
+          <g class="nd" tabindex="0" data-what="redis">
+            <rect class="box-soft" x="330" y="490" width="180" height="54" rx="2"/>
+            <circle id="led-redis" cx="494" cy="503" r="5" fill="#5a6b78"/>
+            <text class="name" x="420" y="515" text-anchor="middle">Redis</text>
+            <text id="txt-redis" class="detail" x="420" y="532" text-anchor="middle">&mdash;</text>
+          </g>
 
-          <rect class="box-soft" x="540" y="490" width="212" height="54" rx="2"/>
-          <text class="name" x="646" y="515" text-anchor="middle">Dead-letter stream</text>
-          <text class="sub"  x="646" y="532" text-anchor="middle">DevReplay.cmd returns them</text>
+          <g class="nd" tabindex="0" data-what="deadletter">
+            <rect class="box-soft" x="540" y="490" width="212" height="54" rx="2"/>
+            <text class="name" x="646" y="515" text-anchor="middle">Dead-letter stream</text>
+            <text class="sub"  x="646" y="532" text-anchor="middle">DevReplay.cmd returns them</text>
+          </g>
 
           <!-- On the right edge rather than the lower one, and centred rather
                than inset. This box is two lines of text in 54 units of height,
@@ -390,17 +501,23 @@
           <path id="edge-telemetry-grafana" class="line-quiet" d="M478 596 V630" marker-end="url(#arrow-quiet)"/>
           <path id="edge-telemetry-jaeger" class="line-quiet" d="M724 596 V630" marker-end="url(#arrow-quiet)"/>
 
-          <rect class="box-soft" x="154" y="634" width="156" height="52" rx="2"/>
-          <text class="name" x="232" y="659" text-anchor="middle">Prometheus</text>
-          <text class="sub"  x="232" y="676" text-anchor="middle">metrics</text>
+          <g class="nd" tabindex="0" data-what="prometheus">
+            <rect class="box-soft" x="154" y="634" width="156" height="52" rx="2"/>
+            <text class="name" x="232" y="659" text-anchor="middle">Prometheus</text>
+            <text class="sub"  x="232" y="676" text-anchor="middle">metrics</text>
+          </g>
 
-          <rect class="box-soft" x="400" y="634" width="156" height="52" rx="2"/>
-          <text class="name" x="478" y="659" text-anchor="middle">Grafana</text>
-          <text class="sub"  x="478" y="676" text-anchor="middle">dashboards</text>
+          <g class="nd" tabindex="0" data-what="grafana">
+            <rect class="box-soft" x="400" y="634" width="156" height="52" rx="2"/>
+            <text class="name" x="478" y="659" text-anchor="middle">Grafana</text>
+            <text class="sub"  x="478" y="676" text-anchor="middle">dashboards</text>
+          </g>
 
-          <rect class="box-soft" x="646" y="634" width="156" height="52" rx="2"/>
-          <text class="name" x="724" y="659" text-anchor="middle">Jaeger</text>
-          <text class="sub"  x="724" y="676" text-anchor="middle">traces</text>
+          <g class="nd" tabindex="0" data-what="jaeger">
+            <rect class="box-soft" x="646" y="634" width="156" height="52" rx="2"/>
+            <text class="name" x="724" y="659" text-anchor="middle">Jaeger</text>
+            <text class="sub"  x="724" y="676" text-anchor="middle">traces</text>
+          </g>
 
           <!-- ================================================================
                KEY — what a line and a lamp mean.
@@ -543,8 +660,9 @@
         badge.setAttribute("stroke", reading.warn ? COLOURS.degraded : badge.getAttribute("data-hue"));
       }
     }
-    // A reading on screen inside the hover panel has just gone stale.
-    if (openReading) fillTip(openReading);
+    // A reading on screen inside the hover panel has just gone stale. Only a
+    // reading: a box's description does not change when a number does.
+    if (openTarget && openTarget.classList.contains("rd")) fillTip(openTarget);
   }
 
   function paintAlarms(alarms) {
@@ -677,49 +795,238 @@
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // The hover panel on a reading
+  // ===========================================================================
+  // What everything on the drawing is
   //
-  // A badge holds four characters. Everything the instrument column used to say
-  // in words - the name, the unit, and what the number actually counts - is
-  // here, and appears when the pointer is *paused* on a badge rather than the
-  // instant it passes over one. Crossing the diagram to reach something else
-  // should not leave three panels flashing in its wake.
+  // Written for somebody who has never seen this system, and who may never have
+  // seen a message broker at all. Each entry answers three questions in order:
+  // what kind of thing is this, what does it do, and what is it doing *here* -
+  // the last being the part nobody can guess. Redis is not a cache in this
+  // system; it is what stops a message delivered twice from being acted on
+  // twice, and no amount of reading the Redis documentation would reveal that.
+  //
+  // This lives in the script rather than in `data-` attributes on the drawing
+  // because it is several paragraphs. In the markup it would bury the diagram;
+  // here it is one table that reads like a document and reviews like one.
+  // ===========================================================================
+
+  const SOURCE = "https://github.com/StewartScottRogers/PrototypeRustMonoMicroservice/tree/master";
+
+  const WHAT_IS = {
+    clients: {
+      kind: "Not part of the system",
+      title: "Clients",
+      note: "Whatever is calling the platform from outside — a curl command you type, the DevDemo.cmd script, or the traffic generator in the left-hand rail of the console. It is drawn so the diagram starts where a request starts, rather than in the middle.",
+      links: [{ label: "DevDemo.cmd — the narrated demonstration", href: SOURCE + "/DevDemo.cmd" }],
+    },
+    gateway: {
+      kind: "A microservice in this repository",
+      title: "Gateway service",
+      note: "The front door. Every request from outside arrives here first. It does two different jobs on purpose, so you can compare them: POST /relay calls the echo service and waits for the answer, which is the simple way; POST /order writes the order and a \"please publish this\" row into PostgreSQL in a single transaction, then answers immediately without waiting for any of the work to be done. The second is the whole point of the platform — the caller is not kept waiting for something that has not happened yet.",
+      links: [
+        { label: "Source — Microservices/gateway-service", href: SOURCE + "/Microservices/gateway-service" },
+        { label: "The transactional outbox pattern", href: "https://microservices.io/patterns/data/transactional-outbox.html" },
+      ],
+    },
+    postgres: {
+      kind: "A database, and a third-party product",
+      title: "PostgreSQL",
+      note: "A relational database — the ordinary kind, where data lives in tables and a transaction either happens completely or not at all. Here it holds three things: the orders themselves, the outbox table of messages waiting to be published, and the audit records written at the far end of the chain. That the order and its outbox row are written in one transaction is what makes losing a message impossible: either both are stored or neither is.",
+      links: [{ label: "PostgreSQL documentation", href: "https://www.postgresql.org/docs/current/" }],
+    },
+    relay: {
+      kind: "A microservice in this repository",
+      title: "Outbox relay",
+      note: "Reads committed rows out of the outbox table and publishes them to the message bus, then marks them done. It exists as its own process rather than as part of the gateway for one reason: publishing and answering requests are different workloads, and this way you can run more of one without running more of the other. It is also why a message cannot be lost in a crash — the row is already safely in the database before anybody tries to publish it.",
+      links: [
+        { label: "Source — Microservices/outbox-relay", href: SOURCE + "/Microservices/outbox-relay" },
+        { label: "The polling publisher pattern", href: "https://microservices.io/patterns/data/polling-publisher.html" },
+      ],
+    },
+    echo: {
+      kind: "A microservice in this repository",
+      title: "Echo service",
+      note: "The simplest possible service: it receives a message and sends it straight back. It is here as the contrast to everything else on this drawing — one call, one answer, the caller waits. Copy this crate when you want to start a new simple service; it is the smallest thing that still passes the whole build, test and container pipeline.",
+      links: [{ label: "Source — Microservices/echo-service", href: SOURCE + "/Microservices/echo-service" }],
+    },
+    tag: {
+      kind: "Notation, not a thing",
+      title: "Continuation tag",
+      note: "A drawing convention, borrowed from wiring diagrams. The line leaving band one and the line entering band two are the same line — it is broken and labelled A at both ends so the picture can be read in bands instead of as one long horizontal run. Nothing is installed or running here.",
+      links: [],
+    },
+    nats: {
+      kind: "A message broker, and a third-party product",
+      title: "NATS with JetStream",
+      note: "The post office in the middle of the system. Services do not call each other here; they hand a message to the broker and move on. JetStream is the part of NATS that stores those messages durably, so one can be delivered to a service that was not running when it was sent, and retried if handling it fails. Three streams live in it, drawn on this band.",
+      links: [
+        { label: "What JetStream is", href: "https://docs.nats.io/nats-concepts/jetstream" },
+        { label: "The messaging-and-eventing skill in this repository", href: SOURCE + "/.claude/skills/messaging-and-eventing/SKILL.md" },
+      ],
+    },
+    commands: {
+      kind: "A stream inside the broker",
+      title: "Command stream",
+      note: "A durable, named log of instructions — \"process this order\" — each meant for exactly one service to carry out. Both worker replicas subscribe under the same durable consumer name, and that shared name is what makes the broker hand each command to only one of them. Add a third worker and the same commands are simply spread across three. This is the difference between messaging and eventing: a command is work to be done once.",
+      links: [
+        { label: "How JetStream consumers work", href: "https://docs.nats.io/nats-concepts/jetstream/consumers" },
+        { label: "The competing consumers pattern", href: "https://learn.microsoft.com/azure/architecture/patterns/competing-consumers" },
+      ],
+    },
+    worker: {
+      kind: "A microservice in this repository, running two copies",
+      title: "Worker",
+      note: "Does the actual work of an order after the caller has already been answered. It takes one command from the stream, checks Redis to make sure it has not already handled that exact message, does the work, and publishes an event saying what happened. Two copies run at once and share the load. If it fails, the broker gives the message back and it is tried again — three times, after which the message is parked on the dead-letter stream rather than retried forever.",
+      links: [
+        { label: "Source — Microservices/worker-service", href: SOURCE + "/Microservices/worker-service" },
+        { label: "The idempotent consumer pattern", href: "https://microservices.io/patterns/communication-style/idempotent-consumer.html" },
+      ],
+    },
+    events: {
+      kind: "A stream inside the broker",
+      title: "Event stream",
+      note: "A durable log of statements of fact — \"this order was processed\" — addressed to nobody in particular. Every subscriber holds its own name and therefore receives its own copy, which is the opposite of the command stream next door. The notifier and the audit service both read every event, neither knows the other exists, and a third could be added tomorrow without changing the worker at all. This is eventing: something happened, and whoever cares may react.",
+      links: [
+        { label: "How JetStream consumers work", href: "https://docs.nats.io/nats-concepts/jetstream/consumers" },
+        { label: "The messaging-and-eventing skill in this repository", href: SOURCE + "/.claude/skills/messaging-and-eventing/SKILL.md" },
+      ],
+    },
+    notifier: {
+      kind: "A microservice in this repository",
+      title: "Notifier",
+      note: "One of two independent reactions to the same event. It stands in for whatever would tell a customer their order is progressing — an email, a push notification, a text message. It reads from its own subscription, so it sees every event rather than a share of them, and it can be stopped and restarted without the audit service noticing.",
+      links: [{ label: "Source — Microservices/notifier-service", href: SOURCE + "/Microservices/notifier-service" }],
+    },
+    audit: {
+      kind: "A microservice in this repository",
+      title: "Audit",
+      note: "The second, entirely separate reaction to the same event. It writes a permanent record back into PostgreSQL — what happened, and when. Watch the two lines from the event stream light up together rather than one after the other: that simultaneity is the thing this platform exists to show. One event, two copies, two services that know nothing about each other.",
+      links: [{ label: "Source — Microservices/audit-service", href: SOURCE + "/Microservices/audit-service" }],
+    },
+    redis: {
+      kind: "A key-value store, and a third-party product",
+      title: "Redis",
+      note: "An in-memory store of keys and values, most often used as a cache. It is not a cache here. A message broker that promises to deliver a message at least once will sometimes deliver it twice, and processing the same order twice would be wrong. Before doing any work the worker claims the message's identifier in Redis; if the claim fails, that message has already been handled and this copy is dropped. That is all it is doing on this drawing.",
+      links: [
+        { label: "Redis documentation", href: "https://redis.io/docs/latest/" },
+        { label: "The idempotent consumer pattern", href: "https://microservices.io/patterns/communication-style/idempotent-consumer.html" },
+      ],
+    },
+    deadletter: {
+      kind: "A stream inside the broker",
+      title: "Dead-letter stream",
+      note: "Where a message goes when it has failed three times. Retrying forever would turn one broken message into an endless loop that buries everything behind it, so it is set aside here instead and the queue moves on. Nothing clears these on their own — that is deliberate, because a parked message is a question somebody needs to answer. DevReplay.cmd puts them back on the queue when the underlying problem is fixed; run it with --dry-run first to see what would be replayed.",
+      links: [
+        { label: "DevReplay.cmd, and the tool behind it", href: SOURCE + "/Microservices/dlq-replay" },
+        { label: "The dead letter queue pattern", href: "https://docs.nats.io/nats-concepts/jetstream/consumers" },
+      ],
+    },
+    prometheus: {
+      kind: "A metrics database, and a third-party product",
+      title: "Prometheus",
+      note: "Collects numbers. Every service publishes counters and timings at a /metrics address, and Prometheus reads all of them every two seconds and keeps the history. Every rate and percentile shown as a badge on this drawing came from a query against it. It answers questions about quantity over time — how many, how fast, how long — and nothing about any individual request.",
+      links: [
+        { label: "Open Prometheus on this machine", href: "http://localhost:9090" },
+        { label: "What Prometheus is", href: "https://prometheus.io/docs/introduction/overview/" },
+      ],
+    },
+    grafana: {
+      kind: "A dashboard tool, and a third-party product",
+      title: "Grafana",
+      note: "Draws graphs of the numbers Prometheus is holding. Prometheus stores and answers queries; Grafana is what turns those answers into dashboards you can watch over time. It is where you go to ask what the system was doing an hour ago, which this panel deliberately cannot tell you — this panel only shows now. The dashboards live in version control in this repository, not inside Grafana, so a change to a graph is reviewable like any other change.",
+      links: [
+        { label: "Open Grafana on this machine", href: "http://localhost:3000" },
+        { label: "What Grafana is", href: "https://grafana.com/docs/grafana/latest/introduction/" },
+      ],
+    },
+    jaeger: {
+      kind: "A tracing tool, and a third-party product",
+      title: "Jaeger",
+      note: "Follows one single request all the way through the system and shows you where its time went. Where Prometheus answers \"how many\" and Grafana answers \"what did that look like over the last hour\", Jaeger answers \"what happened to this one\" — every service it touched, in order, with a bar for each step. It works across the broker as well as across calls, so a single order can be followed from the gateway through the worker and into the audit service.",
+      links: [
+        { label: "Open Jaeger on this machine", href: "http://localhost:16686" },
+        { label: "What tracing is", href: "https://opentelemetry.io/docs/concepts/observability-primer/#distributed-traces" },
+      ],
+    },
+  };
+
+  // ---------------------------------------------------------------------------
+  // The hover panel
+  //
+  // One component, two jobs. On a reading badge it names the number, its unit
+  // and what it counts. On a box it says what the thing is and where to read
+  // more. Both open when the pointer is *paused* rather than the instant it
+  // crosses one, so moving across the drawing does not leave panels flashing.
+  //
+  // The panel on a box carries links, so unlike an ordinary tooltip it has to
+  // survive the pointer leaving the box: the pointer needs somewhere to travel
+  // on its way in. Hence the closing grace period below, cancelled when the
+  // pointer arrives in the panel itself.
   // ---------------------------------------------------------------------------
 
   // Long enough that crossing a badge is not "pausing" on it, short enough that
   // deliberately stopping does not feel broken.
   const HOVER_PAUSE_MILLISECONDS = 320;
+  // How long the panel survives after the pointer leaves, so it can be entered.
+  const CLOSE_GRACE_MILLISECONDS = 280;
 
-  let openReading = null;   // the <g class="rd"> the panel is describing
+  let openTarget = null;   // the .rd or .nd the panel is describing
   let hoverTimer = null;
+  let closeTimer = null;
 
-  function fillTip(group) {
-    const value = group.querySelector(".rd-val");
-    byId("tip-title").textContent = group.dataset.title;
-    byId("tip-value").textContent = value ? value.textContent : "—";
-    byId("tip-value").style.color = value ? value.getAttribute("fill") : "";
-    byId("tip-unit").textContent = group.dataset.unit;
-    byId("tip-note").textContent = group.dataset.note;
+  function fillTip(target) {
+    const isReading = target.classList.contains("rd");
+    const entry = isReading ? null : WHAT_IS[target.dataset.what];
+    const figure = byId("tip-figure");
+    const links = byId("tip-links");
+
+    byId("tip-kind").textContent = isReading ? "Reading" : (entry ? entry.kind : "");
+    byId("tip-title").textContent = isReading ? target.dataset.title : (entry ? entry.title : "");
+    byId("tip-note").textContent = isReading ? target.dataset.note : (entry ? entry.note : "");
+
+    // The live figure belongs only to a reading. A box has a lamp and a detail
+    // line of its own on the drawing, and repeating them here would be noise.
+    figure.hidden = !isReading;
+    if (isReading) {
+      const value = target.querySelector(".rd-val");
+      byId("tip-value").textContent = value ? value.textContent : "—";
+      byId("tip-value").style.color = value ? value.getAttribute("fill") : "";
+      byId("tip-unit").textContent = target.dataset.unit;
+    }
+
+    links.textContent = "";
+    for (const link of (entry && entry.links) || []) {
+      const anchor = document.createElement("a");
+      anchor.textContent = link.label;
+      anchor.href = link.href;
+      // A new tab, always. This panel is normally being read inside the
+      // console's frame, and replacing it would strand the reader with no
+      // way back to the drawing they were looking at.
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      links.appendChild(anchor);
+    }
+    links.hidden = links.childElementCount === 0;
   }
 
-  function showTip(group) {
+  function showTip(target) {
     const tip = byId("tip");
-    openReading = group;
-    fillTip(group);
+    window.clearTimeout(closeTimer);
+    openTarget = target;
+    fillTip(target);
     tip.hidden = false;
 
     // Measured after unhiding, because a hidden element has no size. Both
     // rectangles are in viewport coordinates, so a horizontally scrolled
     // diagram needs no correction of its own.
     const frame = document.querySelector(".bezel").getBoundingClientRect();
-    const badge = group.getBoundingClientRect();
+    const anchor = target.getBoundingClientRect();
 
-    let left = badge.left - frame.left + badge.width / 2 - tip.offsetWidth / 2;
-    let top = badge.top - frame.top - tip.offsetHeight - 10;
+    let left = anchor.left - frame.left + anchor.width / 2 - tip.offsetWidth / 2;
+    let top = anchor.top - frame.top - tip.offsetHeight - 10;
 
-    // Not enough room above: drop it below the badge rather than off the top.
-    if (top < 4) top = badge.bottom - frame.top + 10;
+    // Not enough room above: drop it below rather than off the top.
+    if (top < 4) top = anchor.bottom - frame.top + 10;
     left = Math.max(4, Math.min(left, frame.width - tip.offsetWidth - 4));
 
     tip.style.left = left + "px";
@@ -728,28 +1035,57 @@
 
   function hideTip() {
     window.clearTimeout(hoverTimer);
-    openReading = null;
+    window.clearTimeout(closeTimer);
+    openTarget = null;
     byId("tip").hidden = true;
   }
 
-  for (const group of document.querySelectorAll(".rd")) {
-    // The badge itself reads as four characters with no context, so it is named
-    // here from the same two attributes the hover panel uses. Built rather than
-    // written into the markup, so the name and the panel cannot drift apart.
-    group.setAttribute("aria-label", group.dataset.title + ", " + group.dataset.unit);
-
-    group.addEventListener("mouseenter", () => {
-      window.clearTimeout(hoverTimer);
-      hoverTimer = window.setTimeout(() => showTip(group), HOVER_PAUSE_MILLISECONDS);
-    });
-    group.addEventListener("mouseleave", hideTip);
-    // No pause on the keyboard path: arriving by Tab is already deliberate.
-    group.addEventListener("focus", () => showTip(group));
-    group.addEventListener("blur", hideTip);
+  function scheduleClose() {
+    window.clearTimeout(closeTimer);
+    closeTimer = window.setTimeout(hideTip, CLOSE_GRACE_MILLISECONDS);
   }
 
+  for (const target of document.querySelectorAll(".rd, .nd")) {
+    const entry = WHAT_IS[target.dataset.what];
+    // Named from the same source the panel uses, so the two cannot drift. A
+    // badge otherwise reads as four characters with no context, and a box as
+    // whatever its label happens to say.
+    target.setAttribute("aria-label", target.classList.contains("rd")
+      ? target.dataset.title + ", " + target.dataset.unit
+      : (entry ? entry.title + ". " + entry.kind + "." : ""));
+
+    target.addEventListener("mouseenter", () => {
+      window.clearTimeout(hoverTimer);
+      window.clearTimeout(closeTimer);
+      hoverTimer = window.setTimeout(() => showTip(target), HOVER_PAUSE_MILLISECONDS);
+    });
+    target.addEventListener("mouseleave", () => {
+      window.clearTimeout(hoverTimer);
+      scheduleClose();
+    });
+    // No pause on the keyboard path: arriving by Tab is already deliberate.
+    target.addEventListener("focus", () => showTip(target));
+    target.addEventListener("blur", scheduleClose);
+
+    // Enter or Space follows the first link. Tab cannot reach into the panel -
+    // it is not next in the document - so without this a keyboard reader could
+    // see that there is somewhere to go and have no way to get there.
+    target.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const first = entry && entry.links && entry.links[0];
+      if (!first) return;
+      event.preventDefault();
+      window.open(first.href, "_blank", "noopener,noreferrer");
+    });
+  }
+
+  // The pointer arriving in the panel cancels its closing; leaving restarts it.
+  // This is the whole reason the panel is not `pointer-events:none`.
+  byId("tip").addEventListener("mouseenter", () => window.clearTimeout(closeTimer));
+  byId("tip").addEventListener("mouseleave", scheduleClose);
+
   // Escape closes it, which is the one thing a keyboard user cannot otherwise
-  // do without moving focus off the reading they are reading about.
+  // do without moving focus off the thing they are reading about.
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") hideTip();
   });
