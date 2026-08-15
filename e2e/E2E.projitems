@@ -26,5 +26,6 @@
     <None Include="$(MSBuildThisFileDirectory)Cargo.toml" />
     <None Include="$(MSBuildThisFileDirectory)src\lib.rs" />
     <None Include="$(MSBuildThisFileDirectory)tests\order_flow.rs" />
+    <None Include="$(MSBuildThisFileDirectory)tests\mimic_live.rs" />
   </ItemGroup>
 </Project>

@@ -32,6 +32,9 @@ uuid.workspace = true
 # there is no publishing step between changing it and using the change here.
 service-core.workspace = true
 tokio.workspace = true
+# The cross-origin layer, so a browser page served from another port may
+# call this gateway. See the comment on the layer itself in main.rs.
+tower-http.workspace = true
 tracing.workspace = true
 
 # Only compiled for `cargo test`, never linked into the shipped binary.

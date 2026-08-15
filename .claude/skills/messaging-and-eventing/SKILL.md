@@ -171,6 +171,33 @@ The tool deletes and recreates its own consumer on each run, because
 reconciles a changed configuration — corrected settings would otherwise never
 apply.
 
+## The panel is a worked example of the distinction
+
+`mimic-service` subscribes to the command stream, the event stream and the
+dead-letter stream under three durable names of its own —
+`mimic-tap-commands`, `mimic-tap-events`, `mimic-tap-dead-letters`. Because
+those names are new, it is a *third subscriber*: the worker still receives
+every command and the notifier and audit service still receive every event,
+exactly as before. Confirm it on the monitoring endpoint, where every consumer
+reports its own delivered count:
+
+```
+curl -s "http://localhost:8222/jsz?consumers=1"
+```
+
+This is the clearest demonstration in the repository of the rule at the top of
+this page. It also gives the panel something Prometheus structurally cannot
+produce: a per-message signal, so one command can be shown lighting exactly one
+line into the worker while one event lights both subscriber lines at once.
+
+Two constraints come with it, and both are written into the code:
+
+- The tap uses [`Messaging::durable_consumer_from_now`], which skips whatever
+  is already in the stream. Correct for a display and **wrong for work** — a
+  worker must never skip a committed message.
+- `mimic-service` must run as a single replica. Two would each hold half of
+  every stream and each browser would see half the traffic.
+
 ## Known gaps
 
 1. **No alerting on consumer lag.** Nothing notices if the worker falls

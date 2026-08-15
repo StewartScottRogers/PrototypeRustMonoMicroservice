@@ -1,8 +1,20 @@
 //! A live control-room mimic of this stack.
 //!
-//! Serves one page at `/` showing the real topology, with lamps and gauges
-//! driven by Prometheus and the NATS monitoring endpoint. Open it at
+//! Serves one page at `/` showing the real topology. Open it at
 //! <http://localhost:8090>.
+//!
+//! # Three sources, and which is right about what
+//!
+//! - **The tap** ([`tap`]) is an independent subscriber on the message bus. It
+//!   sees every command and every event the instant it is published, which is
+//!   what makes the flow on the panel immediate rather than sampled.
+//! - **Prometheus** is read every two seconds for the things only it knows:
+//!   how many instances answer, and how slow the slowest orders are.
+//! - **The NATS monitoring endpoint** supplies queue depth, which is a length
+//!   rather than a rate and so cannot be counted from a stream of messages.
+//!
+//! [`live`] holds the rule deciding which source wins for each reading, and
+//! [`push`] sends the result to every open browser over a socket.
 //!
 //! # What this is for
 //!
@@ -28,37 +40,36 @@
 mod contract_tests;
 
 mod collect;
+mod live;
+mod push;
+mod tap;
 
 use anyhow::{Context as _, Result};
 use axum::extract::State;
 use axum::response::{Html, IntoResponse};
 use axum::{Json, Router, routing::get};
-use collect::{Collector, Snapshot};
+use collect::Collector;
+use push::Live;
 use service_core::{health_routes, init_tracing, port_from_env, self_check};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, mpsc, watch};
 
 const SERVICE: &str = "mimic-service";
 const DEFAULT_PORT: u16 = 8080;
-
-/// How often the background poller refreshes the picture.
-///
-/// The browser polls this service, and this service polls Prometheus. One
-/// collector serving every open tab means twenty people watching the panel
-/// generate the same query load as one.
-///
-/// One second is the middle link of a chain that is only as quick as its
-/// slowest part: Prometheus scrapes every 2 seconds, this reads every second,
-/// and the browser polls every second. Making any one of them faster on its
-/// own buys nothing.
-const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// The mimic panel, baked into the binary at compile time.
 const PANEL_HTML: &str = include_str!("../assets/panel.html");
 
 /// The console shell that frames every tool.
 const CONSOLE_HTML: &str = include_str!("../assets/console.html");
+
+/// The traffic generators, shown in the console's sidebar.
+///
+/// Served from here rather than written into the console page, so it can also
+/// be opened on its own, and so the console keeps *framing* things rather than
+/// containing them.
+const GENERATORS_HTML: &str = include_str!("../assets/generators.html");
 
 /// The written walkthrough, served so the console can frame it.
 ///
@@ -67,12 +78,16 @@ const CONSOLE_HTML: &str = include_str!("../assets/console.html");
 /// console self-contained and reachable from any machine on the network.
 const DOCS_HTML: &str = include_str!("../../../docs/messaging-and-eventing.html");
 
-/// The most recent snapshot, shared between the poller and every request.
+/// How many reports the tap may queue before it starts dropping them.
 ///
-/// `Arc<RwLock<T>>` is the standard shape for "one value, many readers, rare
-/// writer": `Arc` lets several tasks own it, `RwLock` lets any number read at
-/// once but only one write at a time.
-type Shared = Arc<RwLock<Snapshot>>;
+/// Bounded on purpose. A stalled panel must never be able to slow down the
+/// message bus, so a full channel drops the report and logs it rather than
+/// applying backpressure to the thing it is watching.
+const REPORT_QUEUE: usize = 1024;
+
+/// How many messages a browser may fall behind before it is sent a fresh
+/// picture instead.
+const BROWSER_BACKLOG: usize = 256;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -90,24 +105,50 @@ async fn main() -> Result<()> {
     let nats_monitor_url =
         std::env::var("NATS_MONITOR_URL").unwrap_or_else(|_| "http://nats:8222".to_owned());
 
+    let nats_url = std::env::var("NATS_URL").unwrap_or_else(|_| "nats://nats:4222".to_owned());
+
     let collector = Collector::new(prometheus_url.clone(), nats_monitor_url.clone());
 
     // Take one reading before serving, so the first visitor sees real data
-    // rather than an empty panel that fills in three seconds later.
-    let shared: Shared = Arc::new(RwLock::new(collector.snapshot().await));
+    // rather than an empty panel that fills in a couple of seconds later.
+    let primed = Arc::new(collector.snapshot().await);
 
-    // The poller owns its own clones and runs for the life of the process.
-    {
-        let collector = collector.clone();
-        let shared = Arc::clone(&shared);
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(POLL_INTERVAL).await;
-                let snapshot = collector.snapshot().await;
-                *shared.write().await = snapshot;
-            }
-        });
-    }
+    // A `watch` channel is the old lock plus the one thing polling could never
+    // have: readers are *told* when the value changes.
+    let (latest_tx, latest_rx) = watch::channel(primed);
+    let (reports_tx, reports_rx) = mpsc::channel(REPORT_QUEUE);
+    let (hub, _) = broadcast::channel(BROWSER_BACKLOG);
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+    // Stamped once per process. A browser carrying a sequence number from a
+    // previous run can tell "the server restarted, my numbering means nothing"
+    // apart from "I missed a few messages" — the recovery is the same either
+    // way, but only one of them deserves a log line.
+    let epoch = uuid::Uuid::new_v4();
+
+    let health = tap::Health::new();
+
+    let mut tasks = tap::spawn(
+        nats_url.clone(),
+        reports_tx,
+        health.clone(),
+        shutdown_rx.clone(),
+    );
+
+    tasks.push(tokio::spawn(push::aggregate(
+        collector.clone(),
+        reports_rx,
+        health,
+        latest_tx,
+        hub.clone(),
+        shutdown_rx,
+        epoch,
+    )));
+
+    let live = Live {
+        latest: latest_rx,
+        hub,
+    };
 
     // Where the browser should go for each external tool. Read from the
     // environment because these are *published host ports*, which compose
@@ -118,6 +159,8 @@ async fn main() -> Result<()> {
         jaeger: std::env::var("JAEGER_URL").unwrap_or_else(|_| "http://localhost:16686".to_owned()),
         prometheus: std::env::var("PROMETHEUS_UI_URL")
             .unwrap_or_else(|_| "http://localhost:9090".to_owned()),
+        gateway: std::env::var("GATEWAY_URL")
+            .unwrap_or_else(|_| "http://localhost:8080".to_owned()),
     };
 
     let app = Router::new()
@@ -125,8 +168,13 @@ async fn main() -> Result<()> {
         .route("/", get(console))
         .route("/mimic", get(panel))
         .route("/docs", get(docs))
+        .route("/generators", get(generators))
         .route("/api/state", get(state))
-        .with_state(shared)
+        // Registered *before* `.with_state`. Adding a stateful route after that
+        // line produces one of axum's long "the trait Handler is not
+        // implemented" errors that never mentions route ordering as the cause.
+        .route("/api/live", get(push::live_socket))
+        .with_state(live)
         .route(
             "/api/links",
             get({
@@ -145,12 +193,49 @@ async fn main() -> Result<()> {
         .await
         .context("could not bind the mimic port")?;
 
-    tracing::info!(%addr, prometheus = %prometheus_url, "mimic panel listening");
+    tracing::info!(
+        %addr,
+        prometheus = %prometheus_url,
+        nats = %nats_url,
+        "mimic panel listening"
+    );
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context("the mimic server stopped")?;
+    // Serve, but stop if a background task dies.
+    //
+    // Every *expected* failure — a broker restart, a dropped connection — is
+    // already retried in place by the backoff loop in `tap`. A task that ends
+    // anyway therefore panicked, and the honest response is to exit so the
+    // container restarts clean. Without this the process would keep serving
+    // happily with a dead tap, and every browser would sit watching a flow
+    // plane that reported itself connected and delivered nothing.
+    //
+    // In-process backoff for expected failures, process exit for unexpected
+    // ones, and never a silent freeze.
+    tokio::select! {
+        served = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()) => {
+            served.context("the mimic server stopped")?;
+        }
+        (finished, index, _rest) = futures::future::select_all(&mut tasks) => {
+            tracing::error!(
+                task = index,
+                outcome = ?finished,
+                "a background task ended unexpectedly; exiting so the container restarts"
+            );
+            shutdown_tx.send_replace(true);
+            anyhow::bail!("a background task ended unexpectedly");
+        }
+    }
+
+    // Tell the tap and the aggregator to stop, then give the tap a moment to
+    // remove its consumers. Nothing on the server expires an abandoned one, so
+    // this is the only cleanup there is.
+    shutdown_tx.send_replace(true);
+
+    for task in tasks {
+        tokio::time::timeout(std::time::Duration::from_secs(3), task)
+            .await
+            .ok();
+    }
 
     Ok(())
 }
@@ -164,6 +249,12 @@ struct Links {
     grafana: String,
     jaeger: String,
     prometheus: String,
+    /// Where the *browser* should post generated traffic.
+    ///
+    /// A published host port like the rest, not the compose network name: the
+    /// generator runs in the reader's browser, so a container name would not
+    /// resolve there.
+    gateway: String,
 }
 
 /// Serves the console shell that frames everything.
@@ -181,14 +272,33 @@ async fn docs() -> Html<&'static str> {
     Html(DOCS_HTML)
 }
 
-/// Serves the current snapshot as JavaScript Object Notation, which is what
-/// the page polls.
+/// Serves the traffic generators.
 ///
-/// Reads the shared value rather than querying Prometheus, so the cost of an
-/// extra browser tab is one JavaScript Object Notation serialisation.
-async fn state(State(shared): State<Shared>) -> impl IntoResponse {
-    let snapshot = shared.read().await.clone();
-    Json(snapshot)
+/// The console frames this in its sidebar rather than in the stage, so the
+/// mimic panel stays on screen while traffic is being driven into the stack.
+/// Watching the effect while causing it is the whole point.
+async fn generators() -> Html<&'static str> {
+    Html(GENERATORS_HTML)
+}
+
+/// Serves the current snapshot as JavaScript Object Notation.
+///
+/// # Kept deliberately, not deprecated
+///
+/// The panel is pushed to over a socket now, so nothing polls this in normal
+/// use. It stays for three reasons, each of which has bitten a real system: a
+/// proxy that strips the upgrade header leaves the browser with nothing else to
+/// fall back to; the end-to-end tests assert through it rather than opening a
+/// socket, which keeps a WebSocket client out of the test crate entirely; and
+/// it is the one endpoint a person can read with `curl` while debugging.
+async fn state(State(live): State<Live>) -> impl IntoResponse {
+    // `borrow()` returns a guard that must not be held across an await, so the
+    // value is cloned out and the guard dropped on this line. The inner
+    // snapshot is cloned rather than serialising the `Arc` directly: serde can
+    // serialise an `Arc`, but only with a feature this workspace does not
+    // deliberately enable.
+    let snapshot = Arc::clone(&live.latest.borrow());
+    Json(collect::Snapshot::clone(&snapshot))
 }
 
 async fn shutdown_signal() {

@@ -55,7 +55,11 @@ sqlx = { version = "0.9", default-features = false, features = [
     "uuid",
 ] }
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "time"] }
+# "sync" carries the channel types. It compiled before this line existed only
+# because another crate in the graph happened to enable it and cargo unifies
+# features across a build — an accident, not a guarantee. The mimic panel now
+# depends on `watch` and `broadcast` directly, so the feature is named here.
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["serde", "v4"] }
@@ -77,6 +81,10 @@ metrics-exporter-prometheus = { version = "0.18", default-features = false }
 
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
+# Only the cross-origin layer is enabled. The package is already in the
+# dependency graph by way of axum, so naming it here costs a feature flag
+# rather than a new package.
+tower-http = { version = "0.6", features = ["cors"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

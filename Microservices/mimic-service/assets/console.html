@@ -14,7 +14,9 @@
     --ink:#c7d8e4; --dim:#6d8496; --far:#4a5f6e;
     --ok:#2fd98a; --warn:#ffb020; --fail:#ff4a4a; --unknown:#5a6b78;
     --mono:"Cascadia Mono",Consolas,"SF Mono",Menlo,"DejaVu Sans Mono",monospace;
-    --rail: 15rem;
+    /* Wider than a list of tabs needs, because the rail now also carries the
+       traffic generator controls. */
+    --rail: 17rem;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -43,7 +45,7 @@
   main{display:grid;grid-template-columns:var(--rail) 1fr;min-height:0}
   nav{
     background:var(--ground);border-right:1px solid var(--edge);
-    padding:.75rem .5rem;display:flex;flex-direction:column;gap:.15rem;overflow-y:auto;
+    padding:.75rem .5rem;display:flex;flex-direction:column;gap:.15rem;overflow-y:auto;min-height:0;
   }
   .grp{font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--far);padding:.9rem .6rem .35rem}
   button.tab{
@@ -56,13 +58,35 @@
   button.tab:focus-visible{outline:2px solid var(--ok);outline-offset:-2px}
   button.tab[aria-selected="true"]{background:var(--panel-2);border-color:var(--edge-hi);color:var(--ink)}
   button.tab .key{margin-left:auto;font-size:.68rem;color:var(--far)}
+  /* ---- the traffic generators, in the rail rather than the stage ----
+     Deliberately not a tab. A control that replaced the mimic panel would hide
+     the effect at the exact moment it was caused, and the whole value here is
+     turning the knob while watching the needle. */
+  /* Fills whatever rail is left below the tabs. Fixed height left dead space
+     under the frame while its own contents scrolled - and a stop control you
+     have to scroll to reach is not a stop control. */
+  .drive{border-top:1px solid var(--edge);margin-top:.6rem;display:flex;flex-direction:column;flex:1;min-height:0}
+  .drive-head{
+    display:flex;align-items:baseline;gap:.5rem;
+    font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--far);
+    padding:.9rem .6rem .35rem;
+  }
+  .drive-head .live{margin-left:auto;color:var(--ok);display:none}
+  .drive-head .live.on{display:inline}
+  #drive{width:100%;border:0;background:var(--ground);display:block;flex:1;min-height:23rem}
+
   .rail-foot{margin-top:auto;padding:.75rem .6rem;font-size:.65rem;line-height:1.6;color:var(--far);border-top:1px solid var(--edge)}
   .rail-foot a{color:var(--dim)}
 
   .stage{position:relative;min-width:0;min-height:0;background:var(--void)}
   iframe{width:100%;height:100%;border:0;display:block;background:var(--void)}
+  /* Bottom right, not top right.
+     Every tool framed here puts something in its own top-right corner - the
+     mimic panel its freshness indicators, Grafana its time picker, Jaeger its
+     search controls - so a button floating there covers the one part of the
+     page the reader most needs. The bottom corner is empty on all five. */
   .pop{
-    position:absolute;top:.6rem;right:.85rem;z-index:3;
+    position:absolute;bottom:.85rem;right:.85rem;z-index:3;
     background:rgba(13,21,28,.92);border:1px solid var(--edge-hi);color:var(--dim);
     font-family:inherit;font-size:.7rem;padding:.35rem .6rem;text-decoration:none;
   }
@@ -124,6 +148,18 @@
   const $ = (id) => document.getElementById(id);
   let current = TABS[0];
 
+  // Where generated traffic is posted. Replaced by /api/links before the rail
+  // is built; the default only matters if that call fails.
+  let gatewayUrl = "http://localhost:8080";
+
+  // The generator lives in a frame of its own and cannot write to this page, so
+  // it reports what it is doing by message instead.
+  window.addEventListener("message", (event) => {
+    if (!event.data || event.data.from !== "generators") return;
+    const indicator = $("drive-live");
+    if (indicator) indicator.className = "live" + (event.data.running ? " on" : "");
+  });
+
   function buildRail() {
     const rail = $("rail");
     rail.innerHTML = "";
@@ -148,6 +184,17 @@
       button.addEventListener("click", () => select(tab));
       rail.append(button);
     });
+
+    // The generators live in the rail itself, built here so rebuilding the tab
+    // list never loses them.
+    const drive = document.createElement("div");
+    drive.className = "drive";
+    drive.innerHTML =
+      '<div class="drive-head"><span>Drive traffic</span>'
+      + '<span class="live" id="drive-live">running</span></div>'
+      + '<iframe id="drive" title="Traffic generators" src="/generators?gateway='
+      + encodeURIComponent(gatewayUrl) + '"></iframe>';
+    rail.append(drive);
 
     const foot = document.createElement("div");
     foot.className = "rail-foot";
@@ -211,6 +258,12 @@
     try {
       const links = await (await fetch("/api/links", { cache: "no-store" })).json();
       for (const tab of TABS) if (tab.key) tab.url = links[tab.key];
+
+      // The generator posts straight to the gateway, and only this service
+      // knows which host port compose published it on. Handed over in the
+      // frame's address because the two pages are different origins and cannot
+      // read each other's variables.
+      if (links.gateway) gatewayUrl = links.gateway;
     } catch {
       // Leave the external tabs without URLs; select() explains rather than
       // opening a broken frame.
@@ -249,7 +302,69 @@
       : "source lost";
   }
 
-  async function pollStatus() {
+  // The status strip listens to the same feed the panel does, so the two can
+  // never disagree about what is happening. It only needs whole pictures, so it
+  // ignores the traffic messages the panel animates from.
+  let statusSocket = null;
+  let statusBackoff = 500;
+  let statusWatchdog = null;
+
+  // Same reasoning as the panel: a half-open socket reports nothing at all, so
+  // silence needs its own timer, and that timer must act rather than only
+  // relabel. Otherwise a wedged feed leaves this strip showing green health
+  // indefinitely - the single most misleading thing this page could do.
+  function armStatusWatchdog() {
+    window.clearTimeout(statusWatchdog);
+    statusWatchdog = window.setTimeout(() => {
+      $("svc-line").textContent = "no feed";
+      $("dot-health").className = "dot unknown";
+      $("stamp-line").textContent = "—";
+      if (statusSocket) statusSocket.close();
+    }, 4000);
+  }
+
+  function listenForStatus() {
+    const scheme = location.protocol === "https:" ? "wss://" : "ws://";
+    const opening = new WebSocket(scheme + location.host + "/api/live");
+    statusSocket = opening;
+
+    opening.onopen = () => { statusBackoff = 500; armStatusWatchdog(); };
+
+    opening.onmessage = (event) => {
+      // Re-armed on *any* message, not only a frame. Frames arrive only when
+      // the picture changes, so a perfectly healthy idle stack sends nothing
+      // but heartbeats - and a watchdog listening for frames alone would
+      // declare that healthy stack dead every four seconds.
+      armStatusWatchdog();
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === "frame") paintStatus(message.state);
+        // A heartbeat carries the freshness of the sampled sources, which is
+        // what this strip's timestamp is actually reporting.
+        if (message.type === "tick" && message.prometheus_age_milliseconds < 6000) {
+          $("stamp-line").textContent = new Date(message.at).toLocaleTimeString();
+        }
+      } catch {
+        // A message this strip cannot read is not a reason to blank it.
+      }
+    };
+
+    opening.onclose = () => {
+      if (statusSocket !== opening) return;
+
+      $("svc-line").textContent = "no feed";
+      $("dot-health").className = "dot unknown";
+      $("stamp-line").textContent = "—";
+
+      window.setTimeout(listenForStatus, statusBackoff * (0.8 + Math.random() * 0.4));
+      statusBackoff = Math.min(statusBackoff * 2, 10000);
+    };
+
+    opening.onerror = () => opening.close();
+  }
+
+  // One read before the socket opens, so the strip is never blank on arrival.
+  async function primeStatus() {
     try {
       paintStatus(await (await fetch("/api/state", { cache: "no-store" })).json());
     } catch {
@@ -267,10 +382,8 @@
   });
 
   loadLinks();
-  pollStatus();
-  // One second, matching the panel and the collector behind it, so the status
-  // strip never disagrees with the panel it is framing.
-  setInterval(pollStatus, 1000);
+  primeStatus();
+  listenForStatus();
 </script>
 </body>
 </html>

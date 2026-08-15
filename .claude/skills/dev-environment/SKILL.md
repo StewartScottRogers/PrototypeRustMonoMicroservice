@@ -41,6 +41,20 @@ They answer different questions, and reaching for the wrong one wastes time:
 A metric tells you orders got slower at 14:20. A trace tells you why that one
 was slow.
 
+The mimic panel is a fourth view and answers a different question again —
+*what is happening right now, and in what shape*. It does not sample: it
+subscribes to the message bus and is pushed to over a socket, so a line lights
+the instant a message is published. Watch the feed from a terminal with any
+WebSocket client, for example:
+
+```
+websocat ws://localhost:8090/api/live
+```
+
+Nothing on the panel is derived from that stream except what it draws. It drops
+messages under load by design, so no total may be taken from it — those live in
+Prometheus.
+
 ## The scripts
 
 Run these from anywhere; each one runs `pushd` to the repository root first.

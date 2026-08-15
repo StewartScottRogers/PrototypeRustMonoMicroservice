@@ -7,171 +7,170 @@
 <meta name="description" content="How this prototype distinguishes messaging from eventing, and the evidence from a live run.">
 <style>
   /* ---------------------------------------------------------------------
-     Tokens. Bare :root is the complete light palette. The two blocks after
-     it redefine only tokens, so components never reference a raw colour.
+     One visual world, committed to.
+
+     This page and the live panel are one tab apart in the console, so they
+     share a palette rather than each having their own. There is deliberately
+     no light mode and no theme switching: a control room does not have a
+     daylight setting, and a page that changed character with the operating
+     system would stop matching the panel beside it half the time.
+
+     Every colour is therefore painted explicitly. Nothing is inherited from
+     whatever is framing the page.
+
+     COLOUR MEANS THE SAME THING ON BOTH SCREENS, which is the part worth
+     protecting:
+
+       cyan    a synchronous call - one service waiting on another
+       violet  a message or an event crossing the broker
+       green   healthy      amber  degraded      red  down
+
+     The two diagram accents below are both drawn from the message family for
+     that reason. Cyan is reserved for synchronous calls and is never used to
+     mark a message, because it means exactly that on the panel.
      --------------------------------------------------------------------- */
   :root {
-    --paper:      #edf1f5;
-    --card:       #ffffff;
-    --card-2:     #f5f8fb;
-    --ink:        #16202b;
-    --ink-soft:   #59677a;
-    --ink-faint:  #8595a6;
-    --rule:       #c7d2dd;
-    --rule-soft:  #dde5ec;
-    --stamp:      #b3352c;
-    --stamp-wash: #f7e6e4;
-    --indigo:     #22548c;
-    --indigo-wash:#e4ecf6;
-    --shadow:     0 1px 0 rgba(22, 32, 43, .04), 0 8px 24px -18px rgba(22, 32, 43, .5);
+    --paper:      #05080b;   /* the ground everything sits on */
+    --card:       #0d151c;   /* a raised block */
+    --card-2:     #101a22;   /* a recessed block */
+    --ink:        #c7d8e4;
+    --ink-soft:   #6d8496;
+    --ink-faint:  #42555f;
+    --rule:       #22333e;
+    --rule-soft:  #182530;
+
+    /* Eventing: one publish, every subscriber gets a copy. The panel's exact
+       message colour. */
+    --stamp:      #b07cff;
+    --stamp-wash: #1a1226;
+
+    /* Messaging: one publish, exactly one consumer takes it. Same family,
+       clearly apart from cyan so it cannot be read as a synchronous call. */
+    --indigo:     #6f8fe8;
+    --indigo-wash:#121a2e;
+
+    /* Reserved, and used only with their meaning. */
+    --sync:       #34c3e0;
+    --ok:         #2fd98a;
+    --warn:       #ffb020;
+    --fail:       #ff4a4a;
+
+    --shadow:     0 0 0 1px #000 inset, 0 24px 60px -30px #000;
 
     --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
-    --sans: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
     --step--1: clamp(.75rem, .72rem + .12vw, .8rem);
-    --step-0:  clamp(1rem, .96rem + .18vw, 1.075rem);
-    --step-1:  clamp(1.2rem, 1.12rem + .35vw, 1.4rem);
-    --step-2:  clamp(1.5rem, 1.34rem + .7vw, 2rem);
-    --step-3:  clamp(2rem, 1.66rem + 1.5vw, 3.1rem);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --paper:      #0f151b;
-      --card:       #18212b;
-      --card-2:     #131b24;
-      --ink:        #e4eaf0;
-      --ink-soft:   #94a3b2;
-      --ink-faint:  #6d7d8e;
-      --rule:       #2b3947;
-      --rule-soft:  #222d39;
-      --stamp:      #e4736a;
-      --stamp-wash: #2e1f1e;
-      --indigo:     #74a9e6;
-      --indigo-wash:#16232f;
-      --shadow:     0 1px 0 rgba(0,0,0,.3), 0 10px 28px -20px #000;
-    }
-  }
-
-  :root[data-theme="dark"] {
-    --paper:      #0f151b;
-    --card:       #18212b;
-    --card-2:     #131b24;
-    --ink:        #e4eaf0;
-    --ink-soft:   #94a3b2;
-    --ink-faint:  #6d7d8e;
-    --rule:       #2b3947;
-    --rule-soft:  #222d39;
-    --stamp:      #e4736a;
-    --stamp-wash: #2e1f1e;
-    --indigo:     #74a9e6;
-    --indigo-wash:#16232f;
-    --shadow:     0 1px 0 rgba(0,0,0,.3), 0 10px 28px -20px #000;
+    --step-0:  clamp(.95rem, .91rem + .18vw, 1.02rem);
+    --step-1:  clamp(1.15rem, 1.07rem + .35vw, 1.35rem);
+    --step-2:  clamp(1.4rem, 1.26rem + .66vw, 1.9rem);
+    --step-3:  clamp(1.9rem, 1.56rem + 1.5vw, 3rem);
   }
 
   * { box-sizing: border-box; }
 
   body {
     background: var(--paper);
+    /* Monospace throughout. An instrument panel is set in one face, and the
+       walkthrough is the same instrument explained. */
+    font-family: var(--mono);
     color: var(--ink);
-    font-family: var(--sans);
     font-size: var(--step-0);
-    line-height: 1.65;
+    line-height: 1.72;
     margin: 0;
     padding: 0 1.25rem 6rem;
     -webkit-font-smoothing: antialiased;
   }
 
-  .wrap { max-width: 60rem; margin: 0 auto; }
-  .col  { max-width: 40rem; }
+  .wrap { max-width: 62rem; margin: 0 auto; }
+  .col  { max-width: 44rem; }
 
-  /* ---------- masthead: a routing slip ---------- */
+  /* ---------- masthead: the header plate on a cabinet ---------- */
   .slip {
-    margin: 3.5rem 0 4rem;
+    margin: 3rem 0 4rem;
     border: 1px solid var(--rule);
-    border-top: 3px solid var(--ink);
+    /* The one bright edge on the page, the way a live panel carries one. */
+    border-top: 2px solid var(--sync);
     background: var(--card);
     box-shadow: var(--shadow);
   }
   .slip-head {
     display: flex; flex-wrap: wrap; gap: .75rem 1.5rem;
     justify-content: space-between; align-items: baseline;
-    padding: .7rem 1.5rem;
+    padding: .6rem 1.5rem;
     border-bottom: 1px solid var(--rule-soft);
-    font-family: var(--mono);
     font-size: var(--step--1);
-    letter-spacing: .1em;
+    letter-spacing: .18em;
     text-transform: uppercase;
     color: var(--ink-faint);
   }
   .slip-body { padding: 2rem 1.5rem 2.25rem; }
   h1 {
-    font-family: var(--mono);
     font-size: var(--step-3);
-    line-height: 1.02;
-    letter-spacing: -.02em;
+    font-weight: 500;
+    line-height: 1.04;
+    letter-spacing: -.01em;
     margin: 0 0 1rem;
     text-wrap: balance;
   }
   .standfirst {
     font-size: var(--step-1);
-    line-height: 1.45;
+    line-height: 1.5;
     color: var(--ink-soft);
     margin: 0;
-    max-width: 34rem;
+    max-width: 38rem;
     text-wrap: pretty;
   }
+  /* An engraved status plate, not a rubber stamp. Square and level: the
+     rotation belonged to a paper office. */
   .stamp {
     display: inline-block;
-    font-family: var(--mono);
     font-size: var(--step--1);
-    letter-spacing: .14em;
+    letter-spacing: .18em;
     text-transform: uppercase;
-    color: var(--stamp);
-    border: 1.5px solid var(--stamp);
-    background: var(--stamp-wash);
-    padding: .2rem .6rem;
-    transform: rotate(-1.5deg);
+    color: var(--warn);
+    border: 1px solid var(--warn);
+    background: #241703;
+    padding: .2rem .7rem;
   }
 
   /* ---------- sections ---------- */
   section { margin: 4.5rem 0 0; }
   .eyebrow {
     display: flex; align-items: center; gap: 1rem;
-    font-family: var(--mono);
     font-size: var(--step--1);
-    letter-spacing: .16em;
+    letter-spacing: .2em;
     text-transform: uppercase;
-    color: var(--ink-faint);
+    color: var(--ink-soft);
     margin: 0 0 1.25rem;
   }
   .eyebrow::after {
     content: ""; flex: 1; height: 1px; background: var(--rule);
   }
   h2 {
-    font-family: var(--mono);
     font-size: var(--step-2);
-    line-height: 1.12;
-    letter-spacing: -.015em;
+    font-weight: 500;
+    line-height: 1.14;
+    letter-spacing: -.01em;
     margin: 0 0 1rem;
     text-wrap: balance;
   }
   h3 {
-    font-family: var(--mono);
     font-size: var(--step-0);
-    letter-spacing: .04em;
+    font-weight: 500;
+    letter-spacing: .1em;
     text-transform: uppercase;
+    color: var(--ink);
     margin: 0 0 .5rem;
   }
   p { margin: 0 0 1.1rem; text-wrap: pretty; }
-  .lede { font-size: var(--step-1); line-height: 1.5; color: var(--ink-soft); }
-  strong { font-weight: 650; }
+  .lede { font-size: var(--step-1); line-height: 1.55; color: var(--ink-soft); }
+  strong { color: #e6eef4; font-weight: 600; }
   code {
-    font-family: var(--mono);
-    font-size: .89em;
+    font-size: .92em;
     background: var(--card-2);
-    border: 1px solid var(--rule-soft);
-    padding: .08em .35em;
+    border: 1px solid var(--rule);
+    color: var(--sync);
+    padding: .08em .4em;
     white-space: nowrap;
   }
 
@@ -188,26 +187,25 @@
   .panel { background: var(--card); padding: 1.75rem 1.5rem 1.5rem; }
   .panel--copy { background: var(--card-2); }
   .panel-tag {
-    font-family: var(--mono);
     font-size: var(--step--1);
-    letter-spacing: .16em;
+    letter-spacing: .2em;
     text-transform: uppercase;
     margin: 0 0 .2rem;
   }
   .panel--split .panel-tag { color: var(--indigo); }
   .panel--copy  .panel-tag { color: var(--stamp); }
-  .panel-claim { font-size: var(--step-1); line-height: 1.3; margin: 0 0 1.25rem; }
-  .panel-note { font-size: var(--step--1); color: var(--ink-soft); margin: 1rem 0 0; line-height: 1.55; }
+  .panel-claim { font-size: var(--step-1); line-height: 1.35; margin: 0 0 1.25rem; }
+  .panel-note { font-size: var(--step--1); color: var(--ink-soft); margin: 1rem 0 0; line-height: 1.6; }
   .panel svg { width: 100%; height: auto; display: block; }
 
-  .svg-box  { fill: var(--card); stroke: var(--ink); stroke-width: 1.5; }
-  .svg-box2 { fill: var(--card-2); stroke: var(--ink-soft); stroke-width: 1.25; }
-  .svg-line { stroke: var(--ink-soft); stroke-width: 1.5; fill: none; }
-  .svg-live { stroke: var(--indigo); stroke-width: 2.5; fill: none; }
-  .svg-copy { stroke: var(--stamp); stroke-width: 2.5; fill: none; }
-  .svg-dead { stroke: var(--rule); stroke-width: 1.5; fill: none; stroke-dasharray: 4 4; }
+  .svg-box  { fill: var(--card-2); stroke: var(--rule); stroke-width: 1.4; }
+  .svg-box2 { fill: var(--paper); stroke: var(--rule); stroke-width: 1.2; }
+  .svg-line { stroke: var(--ink-faint); stroke-width: 1.4; fill: none; }
+  .svg-live { stroke: var(--indigo); stroke-width: 2.2; fill: none; }
+  .svg-copy { stroke: var(--stamp); stroke-width: 2.2; fill: none; }
+  .svg-dead { stroke: var(--rule); stroke-width: 1.4; fill: none; stroke-dasharray: 4 4; }
   .svg-t    { font-family: var(--mono); font-size: 11px; fill: var(--ink); }
-  .svg-t-s  { font-family: var(--mono); font-size: 9.5px; fill: var(--ink-faint); letter-spacing: .06em; }
+  .svg-t-s  { font-family: var(--mono); font-size: 9.5px; fill: var(--ink-soft); letter-spacing: .06em; }
 
   /* ---------- flow diagram ---------- */
   .flow {
@@ -230,28 +228,26 @@
   }
   .docket-head {
     display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;
-    padding: .55rem 1rem;
+    padding: .5rem 1rem;
     background: var(--card-2);
-    border-bottom: 1px solid var(--rule-soft);
-    font-family: var(--mono);
+    border-bottom: 1px solid var(--rule);
     font-size: var(--step--1);
-    letter-spacing: .1em;
+    letter-spacing: .14em;
     text-transform: uppercase;
     color: var(--ink-soft);
   }
-  .docket-head b { color: var(--ink); font-weight: 650; }
+  .docket-head b { color: var(--ink); font-weight: 600; }
   .docket pre {
     margin: 0;
     padding: 1rem;
     overflow-x: auto;
-    font-family: var(--mono);
     font-size: var(--step--1);
-    line-height: 1.75;
-    color: var(--ink);
+    line-height: 1.8;
+    color: var(--ink-soft);
     font-variant-numeric: tabular-nums;
   }
-  .w1 { color: var(--indigo); font-weight: 650; }
-  .w2 { color: var(--stamp); font-weight: 650; }
+  .w1 { color: var(--indigo); font-weight: 600; }
+  .w2 { color: var(--stamp); font-weight: 600; }
   .dim { color: var(--ink-faint); }
 
   /* ---------- tables ---------- */
@@ -259,59 +255,84 @@
   table { border-collapse: collapse; width: 100%; font-size: var(--step--1); min-width: 30rem; }
   caption {
     text-align: left;
-    font-family: var(--mono);
     font-size: var(--step--1);
-    letter-spacing: .12em;
+    letter-spacing: .16em;
     text-transform: uppercase;
-    color: var(--ink-faint);
+    color: var(--ink-soft);
     padding-bottom: .6rem;
   }
   th, td { text-align: left; padding: .6rem .85rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
   th {
-    font-family: var(--mono);
-    font-weight: 650;
-    letter-spacing: .06em;
+    font-weight: 500;
+    letter-spacing: .1em;
     text-transform: uppercase;
-    color: var(--ink-soft);
+    color: var(--ink-faint);
     border-bottom: 1px solid var(--rule);
   }
+  td { color: var(--ink-soft); }
   tbody tr:last-child td { border-bottom: none; }
   td code { white-space: nowrap; }
 
   /* ---------- property list ---------- */
   .props { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin: 2rem 0; }
   .prop { background: var(--card); padding: 1.35rem 1.5rem; }
-  .prop p { margin: 0; color: var(--ink-soft); font-size: var(--step--1); line-height: 1.65; }
+  .prop p { margin: 0; color: var(--ink-soft); font-size: var(--step--1); line-height: 1.7; }
   .prop p + p { margin-top: .6rem; }
-  .prop .kicker { color: var(--stamp); font-family: var(--mono); font-size: var(--step--1); letter-spacing: .1em; text-transform: uppercase; }
+  .prop .kicker { color: var(--stamp); font-size: var(--step--1); letter-spacing: .14em; text-transform: uppercase; }
 
-  /* ---------- run block ---------- */
+  /* ---------- run block: a recessed console, not an inverted page ---------- */
   .run {
-    background: var(--ink);
-    color: var(--paper);
+    background: #03060a;
+    color: var(--ink-soft);
+    border: 1px solid var(--rule);
+    box-shadow: 0 0 0 1px #000 inset;
     padding: 1.5rem;
-    font-family: var(--mono);
     font-size: var(--step--1);
     line-height: 2;
     overflow-x: auto;
-    box-shadow: var(--shadow);
     margin: 1.5rem 0;
   }
   .run .cmt { color: var(--ink-faint); }
-  .run b { color: #fff; font-weight: 650; }
-  :root[data-theme="dark"] .run b,
-  :root:not([data-theme="light"]) .run b { color: var(--ink); }
+  .run b { color: var(--sync); font-weight: 500; }
+
+  /* ---------- references ----------
+     Every technical term that has a canonical definition elsewhere carries a
+     link to it. The reader should never have to guess which "outbox" or which
+     "idempotency" is meant, and should be able to leave and verify. */
+  a {
+    color: var(--sync);
+    text-decoration: none;
+    border-bottom: 1px dotted color-mix(in srgb, var(--sync) 55%, transparent);
+  }
+  a:hover, a:focus-visible { color: #7fe0f5; border-bottom-style: solid; }
+  a:focus-visible { outline: 2px solid var(--sync); outline-offset: 2px; }
+  /* No arrow glyph marking external links: the monospace face here has no
+     U+2197, so it rendered as a missing-glyph box on every link. The colour and
+     the dotted rule carry the meaning, and the References section below names
+     every source explicitly. */
+
+  .refs { margin: 1.5rem 0 0; padding: 0; list-style: none; }
+  .refs li {
+    padding: .55rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    display: grid;
+    grid-template-columns: 13rem 1fr;
+    gap: .25rem 1.5rem;
+  }
+  .refs li:last-child { border-bottom: none; }
+  .refs .what { color: var(--ink-soft); font-size: var(--step--1); }
+  .refs .src { font-size: var(--step--1); }
+  @media (max-width: 44rem) { .refs li { grid-template-columns: 1fr; } }
 
   ul.gaps { padding-left: 1.1rem; margin: 1rem 0; }
   ul.gaps li { margin-bottom: .7rem; color: var(--ink-soft); }
-  ul.gaps li::marker { color: var(--stamp); }
+  ul.gaps li::marker { color: var(--warn); }
 
   footer {
     margin-top: 5rem; padding-top: 1.5rem;
     border-top: 1px solid var(--rule);
-    font-family: var(--mono);
     font-size: var(--step--1);
-    letter-spacing: .08em;
+    letter-spacing: .12em;
     text-transform: uppercase;
     color: var(--ink-faint);
     display: flex; flex-wrap: wrap; gap: .5rem 2rem; justify-content: space-between;
@@ -347,25 +368,31 @@
   <section>
     <p class="eyebrow">The distinction</p>
     <div class="col">
-      <h2>One docket, or a carbon copy</h2>
+      <h2>Point-to-point delivery compared with publish-subscribe</h2>
       <p class="lede">
-        A <strong>command</strong> is a docket handed to one clerk. Somebody has
-        to do the work, and it must not be done twice.
+        A <strong>command</strong> instructs a single recipient to perform work.
+        Exactly one consumer must act on it, and acting twice is a defect. This
+        is the
+        <a href="https://www.enterpriseintegrationpatterns.com/patterns/messaging/PointToPointChannel.html">point-to-point channel</a>.
       </p>
       <p class="lede">
-        An <strong>event</strong> is a memo run off on carbon paper. Every desk
-        that cares gets its own copy, and the sender never learns who read it.
+        An <strong>event</strong> states that something has happened. Every
+        interested subscriber receives its own copy, and the publisher neither
+        knows nor depends upon which subscribers consume it. This is the
+        <a href="https://www.enterpriseintegrationpatterns.com/patterns/messaging/PublishSubscribeChannel.html">publish-subscribe channel</a>.
       </p>
       <p>
-        In JetStream both use the same streams and the same calls. The only
-        thing that differs is whether consumers share a durable name.
+        In <a href="https://docs.nats.io/nats-concepts/jetstream">NATS JetStream</a> both are expressed with the same
+        streams and the same client calls. The sole distinction is whether the
+        consumers share a durable name, which is determined by
+        <a href="https://docs.nats.io/nats-concepts/jetstream/consumers">the consumer configuration</a>.
       </p>
     </div>
 
     <div class="panels">
       <div class="panel panel--split">
         <p class="panel-tag">Messaging</p>
-        <p class="panel-claim">A second worker <strong>splits</strong> the load.</p>
+        <p class="panel-claim">A second worker <strong>divides</strong> the load.</p>
         <svg viewBox="0 0 320 150" role="img" aria-label="One command stream feeding two workers that share a single consumer; each message goes to only one worker.">
           <rect class="svg-box" x="8" y="12" width="96" height="30"/>
           <text class="svg-t" x="20" y="31">commands</text>
@@ -384,14 +411,16 @@
           <text class="svg-t-s" x="8" y="118">GOES TO ONE</text>
         </svg>
         <p class="panel-note">
-          Both workers ask for <code>order-worker</code>. The server hands each
-          command to exactly one of them.
+          Both replicas request the durable consumer <code>order-worker</code>,
+          so the server delivers each command to exactly one of them — the same
+          arrangement as a
+          <a href="https://docs.nats.io/nats-concepts/core-nats/queue">queue group</a>.
         </p>
       </div>
 
       <div class="panel panel--copy">
         <p class="panel-tag">Eventing</p>
-        <p class="panel-claim">A second subscriber <strong>adds a reaction</strong>.</p>
+        <p class="panel-claim">A second subscriber <strong>adds a reaction</strong> without removing one.</p>
         <svg viewBox="0 0 320 150" role="img" aria-label="One event stream feeding two subscribers with separate consumers; both receive every event.">
           <rect class="svg-box" x="8" y="12" width="96" height="30"/>
           <text class="svg-t" x="30" y="31">events</text>
@@ -412,8 +441,8 @@
           <text class="svg-t-s" x="8" y="118">NAMES, TWO COPIES</text>
         </svg>
         <p class="panel-note">
-          <code>order-notifier</code> and <code>order-audit</code> each keep
-          their own position. Both see every event.
+          <code>order-notifier</code> and <code>order-audit</code> each maintain
+          an independent position in the stream, so both observe every event.
         </p>
       </div>
     </div>
@@ -431,7 +460,9 @@
       </table>
     </div>
     <p class="col">
-      If you cannot say which of the two a new subject is, it is a command.
+      Where the classification of a new subject is uncertain, treat it as a
+      command. Performing work twice is a more serious fault than declining to
+      broadcast a fact.
     </p>
   </section>
 
@@ -501,8 +532,12 @@
   <section>
     <p class="eyebrow">Evidence</p>
     <div class="col">
-      <h2>It runs. Here is the tape.</h2>
-      <p>Captured from <code>DevDemo.cmd</code> against the live stack, not written by hand.</p>
+      <h2>Recorded output from a live run</h2>
+      <p>
+        Captured from <code>DevDemo.cmd</code> against the running stack. The
+        figures below are transcribed from that run rather than composed for
+        this page.
+      </p>
     </div>
 
     <div class="docket">
@@ -558,51 +593,67 @@ carried through NATS, gives it back.</span></pre>
 
   <section>
     <p class="eyebrow">The four things that are easy to get wrong</p>
-    <div class="col"><h2>Correctness, not just plumbing</h2></div>
+    <div class="col"><h2>Four properties that are commonly implemented incorrectly</h2></div>
     <div class="props">
       <div class="prop">
         <h3>Transactional outbox</h3>
-        <p class="kicker">Never publish inside the operation that writes state</p>
+        <p class="kicker">A message is never published from within the operation that writes state</p>
         <p>
-          The order row and the outgoing message commit together. Publishing
-          directly leaves a window where the order exists and the message is
-          gone, with nothing left to prove it was ever meant to be sent.
+          The order row and the outgoing message are committed in a single
+          database transaction, following the
+          <a href="https://microservices.io/patterns/data/transactional-outbox.html">transactional outbox</a>
+          pattern. Publishing directly from the request handler would leave an
+          interval in which the order has been committed and the message lost,
+          with no remaining record that it was ever intended to be sent.
         </p>
-        <p>The row is marked published only after the broker acknowledges it. Marking first would recreate the same hole.</p>
+        <p>
+          The row is marked as published only after the broker has acknowledged
+          receipt. Marking it beforehand would reintroduce the same interval.
+        </p>
       </div>
       <div class="prop">
         <h3>Idempotency</h3>
-        <p class="kicker">Dedupe on the business key</p>
+        <p class="kicker">Duplicates are detected by business key, not by message identifier</p>
         <p>
-          On <code>order_id</code>, not the message id. Message ids only catch
-          broker redeliveries; the order id also catches a client submitting the
-          same order twice, which is the duplicate people actually hit.
+          Detection is performed on <code>order_id</code> rather than the
+          message identifier, making this an
+          <a href="https://microservices.io/patterns/communication-style/idempotent-consumer.html">idempotent
+          consumer</a>. A message identifier detects only redelivery by the
+          broker; the business key additionally detects a client submitting the
+          same order twice, which is the case encountered more often. Delivery
+          is <a href="https://www.enterpriseintegrationpatterns.com/patterns/messaging/GuaranteedMessaging.html">at least once</a>, so
+          duplicates are a normal operating condition rather than a fault.
         </p>
         <p>
-          The claim is released when processing fails. Claiming it up front and
-          never releasing turns a retry into a "duplicate" and loses the message
-          precisely because you tried to be safe.
+          The claim is released when processing fails. Retaining it would cause
+          a subsequent retry to be classified as a duplicate, discarding the
+          message as a direct consequence of the precaution intended to protect
+          it.
         </p>
       </div>
       <div class="prop">
         <h3>Retry, then dead-letter</h3>
-        <p class="kicker">Fail without jamming the queue</p>
+        <p class="kicker">Failure must not obstruct the queue</p>
         <p>
-          Three attempts with a delayed negative acknowledgement, then the
-          message moves to its own stream. A message that can never succeed
-          would otherwise be redelivered forever, with everything behind it
-          waiting.
+          Three delivery attempts are made, each followed by a delayed negative
+          acknowledgement, after which the message is moved to a dedicated
+          stream — a <a href="https://www.enterpriseintegrationpatterns.com/patterns/messaging/DeadLetterChannel.html">dead letter
+          channel</a>. A message that can never be processed successfully would
+          otherwise be redelivered indefinitely while every message behind it
+          waits.
         </p>
       </div>
       <div class="prop">
         <h3>Distributed tracing</h3>
-        <p class="kicker">Give back what decoupling takes away</p>
+        <p class="kicker">Restoring the causal record that decoupling removes</p>
         <p>
-          The World Wide Web Consortium <code>traceparent</code> rides in NATS
-          headers, so one trace covers the incoming request, the broker hop and
-          every subscriber. Without it each service produces its own
-          disconnected trace and the one
-          question worth asking — what did this request cause? — has no answer.
+          The <a href="https://www.w3.org/TR/trace-context/">World Wide Web
+          Consortium Trace Context</a> <code>traceparent</code> header is
+          carried in the NATS message headers, so a single
+          <a href="https://opentelemetry.io/docs/concepts/signals/traces/">trace</a>
+          spans the incoming request, the broker hop and every subscriber.
+          Without it each service emits an unconnected trace, and the question
+          that matters — what did this request cause — cannot be answered.
         </p>
       </div>
     </div>
@@ -611,10 +662,12 @@ carried through NATS, gives it back.</span></pre>
   <section>
     <p class="eyebrow">Running it</p>
     <div class="col">
-      <h2>Two commands</h2>
+      <h2>Operating the stack</h2>
       <p>
-        Nine containers, roughly fifteen seconds to healthy. The demo narrates
-        itself and ends with a Jaeger link.
+        Nine containers reach a healthy state in approximately fifteen seconds
+        under <a href="https://docs.docker.com/compose/">Docker Compose</a>. The
+        demonstration narrates its own progress and concludes with a link into
+        <a href="https://www.jaegertracing.io/docs/latest/architecture/">Jaeger</a>.
       </p>
     </div>
     <div class="run"><span class="cmt">&#8250; build, start, wait for every healthcheck</span>
@@ -646,18 +699,18 @@ carried through NATS, gives it back.</span></pre>
   <section>
     <p class="eyebrow">Closed</p>
     <div class="col">
-      <h2>The four gaps, since fixed</h2>
+      <h2>Four defects previously identified, now resolved</h2>
     </div>
     <div class="props">
       <div class="prop">
         <h3>The trace survives the outbox</h3>
         <p class="kicker">Was: the chain broke where it became durable</p>
         <p>
-          The trace context now travels <em>inside</em> the envelope, and the
-          envelope is already stored as JavaScript Object Notation in the
-          outbox row — so the context is still there minutes later when the
-          relay picks it up. One field,
-          no new column. A trace now starts at the incoming request:
+          The trace context is now carried <em>within</em> the envelope, and the
+          envelope is already stored as JavaScript Object Notation in the outbox
+          row. The context therefore remains available minutes later when the
+          relay reads the row: one additional field, and no additional column. A
+          trace consequently begins at the incoming request:
         </p>
         <p><code>gateway accept &rarr; outbox-relay &rarr; worker &rarr; subscribers</code></p>
       </div>
@@ -665,67 +718,144 @@ carried through NATS, gives it back.</span></pre>
         <h3>The relay is its own process</h3>
         <p class="kicker">Was: a background task inside the gateway</p>
         <p>
-          Running a second gateway for request throughput used to start a second
-          relay whether you wanted one or not. Separated, each scales for its
-          own reason — and more than one copy was always safe, because
-          <code>FOR UPDATE SKIP LOCKED</code> makes them claim different rows.
+          Running a second gateway for request throughput previously started a
+          second relay irrespective of whether one was required. As separate
+          processes each scales for its own reason, and running more than one
+          relay has always been safe because
+          <a href="https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE"><code>FOR
+          UPDATE SKIP LOCKED</code></a> causes each to claim a disjoint set of
+          rows.
         </p>
       </div>
       <div class="prop">
         <h3>The dead-letter queue can be drained</h3>
         <p class="kicker">Was: messages parked with no way back</p>
         <p>
-          <code>DevReplay.cmd</code> moves dead letters back onto the queue,
-          with <code>--dry-run</code> to look first. Deliberately a one-shot
-          tool, not a service: a message is dead-lettered <em>because</em> it
-          kept failing, so replaying on a timer loops forever while looking like
-          progress. Replay is a decision a person makes after fixing something.
+          <code>DevReplay.cmd</code> returns dead letters to the queue, with
+          <code>--dry-run</code> available to inspect them first. It is
+          deliberately a single-shot tool rather than a service: a message is
+          dead-lettered <em>because</em> it has repeatedly failed, so replaying
+          it on a timer would loop indefinitely while presenting the appearance
+          of progress. Replay is a decision taken by an operator after the
+          underlying cause has been corrected.
         </p>
       </div>
       <div class="prop">
         <h3>Messages carry a schema version</h3>
         <p class="kicker">Was: a decode failure was the only signal</p>
         <p>
-          A stream holds messages for as long as its retention says, so a
-          deploy puts two payload shapes in flight at once. Every envelope now
-          declares its version; a consumer meeting an unknown one dead-letters
-          it rather than guessing. Additive changes keep the version, anything
-          that could break a reader increments it.
+          A stream retains messages for the duration of its retention policy, so
+          a deployment places two payload shapes in flight simultaneously. Every
+          envelope now declares its version, and a consumer encountering an
+          unrecognised version dead-letters the message rather than inferring a
+          shape. Additive changes retain the version; any change capable of
+          breaking an existing reader increments it. Consumers are written as
+          <a href="https://martinfowler.com/bliki/TolerantReader.html">tolerant
+          readers</a> and ignore fields they do not recognise.
         </p>
       </div>
     </div>
   </section>
 
   <section>
-    <p class="eyebrow">Not done</p>
+    <p class="eyebrow">Enforcement</p>
     <div class="col">
-      <h2>The one that is blocked</h2>
+      <h2>The gates are armed</h2>
       <p>
-        <strong>The gates are not armed.</strong> Every check runs and reports,
-        but nothing stops a red pull request being merged.
+        The repository is public and the branch protection ruleset is active on
+        <code>master</code>. Three aggregate checks are required, and a pull
+        request failing any of them cannot be merged.
       </p>
       <p>
-        This is not an oversight and not a permissions problem. GitHub refuses
-        branch protection on a private repository owned by a personal account on
-        the free plan, through both the rulesets programming interface and the older one:
-      </p>
-      <p><code>Upgrade to GitHub Pro or make this repository public</code></p>
-      <p>
-        It is the third feature to hit that same wall, after build provenance
-        attestation and CodeQL scanning. All three are written and waiting.
+        Only the aggregate checks are named as required, deliberately. A
+        path-filtered job that does not run reports no status at all, and a
+        required check that never reports leaves a pull request pending
+        indefinitely. Each aggregate job runs unconditionally and fails unless
+        every job it depends on either succeeded or was skipped.
       </p>
       <p>
-        The policy is version-controlled at
+        The policy is held in version control at
         <code>.github/rulesets/master.json</code> and applied by
-        <code>.github/scripts/arm-gates.sh</code> — one command, the moment the
-        repository goes public or onto a paid plan.
+        <code>.github/scripts/arm-gates.sh</code>, so the configuration is
+        reviewable in a pull request rather than existing only in the settings
+        of the hosting service. See the
+        <a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets">documentation
+        on rulesets</a>.
+      </p>
+      <p>
+        Two capabilities became available at the same time, both having
+        previously been refused on a private repository owned by a personal
+        account: build provenance attestation, and CodeQL analysis. Both are now
+        running.
       </p>
     </div>
   </section>
 
+  <section>
+    <p class="eyebrow">References</p>
+    <div class="col">
+      <h2>Sources for the terms used above</h2>
+      <p>
+        Each term in this document has an established definition elsewhere. The
+        implementations here follow those definitions; where this build departs
+        from one, the departure is stated in the relevant section.
+      </p>
+    </div>
+    <ul class="refs">
+      <li>
+        <span class="what">Command delivery</span>
+        <span class="src"><a href="https://www.enterpriseintegrationpatterns.com/patterns/messaging/PointToPointChannel.html">Point-to-Point Channel</a> — Hohpe and Woolf, <em>Enterprise Integration Patterns</em></span>
+      </li>
+      <li>
+        <span class="what">Event distribution</span>
+        <span class="src"><a href="https://www.enterpriseintegrationpatterns.com/patterns/messaging/PublishSubscribeChannel.html">Publish-Subscribe Channel</a> — Hohpe and Woolf</span>
+      </li>
+      <li>
+        <span class="what">Dead-letter handling</span>
+        <span class="src"><a href="https://www.enterpriseintegrationpatterns.com/patterns/messaging/DeadLetterChannel.html">Dead Letter Channel</a> — Hohpe and Woolf</span>
+      </li>
+      <li>
+        <span class="what">Delivery guarantee</span>
+        <span class="src"><a href="https://www.enterpriseintegrationpatterns.com/patterns/messaging/GuaranteedMessaging.html">Guaranteed Delivery</a> — Hohpe and Woolf</span>
+      </li>
+      <li>
+        <span class="what">Publishing with state</span>
+        <span class="src"><a href="https://microservices.io/patterns/data/transactional-outbox.html">Transactional Outbox</a> — Richardson, <em>Microservice Architecture</em></span>
+      </li>
+      <li>
+        <span class="what">Duplicate handling</span>
+        <span class="src"><a href="https://microservices.io/patterns/communication-style/idempotent-consumer.html">Idempotent Consumer</a> — Richardson</span>
+      </li>
+      <li>
+        <span class="what">Schema tolerance</span>
+        <span class="src"><a href="https://martinfowler.com/bliki/TolerantReader.html">Tolerant Reader</a> — Fowler</span>
+      </li>
+      <li>
+        <span class="what">Streams and consumers</span>
+        <span class="src"><a href="https://docs.nats.io/nats-concepts/jetstream">NATS JetStream</a> and <a href="https://docs.nats.io/nats-concepts/jetstream/consumers">consumer configuration</a></span>
+      </li>
+      <li>
+        <span class="what">Trace propagation</span>
+        <span class="src"><a href="https://www.w3.org/TR/trace-context/">Trace Context</a> — World Wide Web Consortium recommendation</span>
+      </li>
+      <li>
+        <span class="what">Instrumentation</span>
+        <span class="src"><a href="https://opentelemetry.io/docs/concepts/signals/traces/">OpenTelemetry traces</a> and <a href="https://prometheus.io/docs/prometheus/latest/querying/functions/#rate">the Prometheus rate function</a></span>
+      </li>
+      <li>
+        <span class="what">Percentiles from histograms</span>
+        <span class="src"><a href="https://prometheus.io/docs/practices/histograms/">Histograms and summaries</a> — Prometheus documentation</span>
+      </li>
+      <li>
+        <span class="what">Concurrent row claiming</span>
+        <span class="src"><a href="https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE">Locking clauses</a> — PostgreSQL documentation</span>
+      </li>
+    </ul>
+  </section>
+
   <footer>
-    <span>10 crates &middot; 6 services &middot; 31 unit tests &middot; 8 smoke assertions</span>
-    <span>NATS &middot; JetStream &middot; Postgres &middot; Redis &middot; Jaeger</span>
+    <span>12 crates &middot; 7 services &middot; 151 tests passing &middot; 7 end-to-end, run on demand</span>
+    <span>NATS &middot; JetStream &middot; PostgreSQL &middot; Redis &middot; Jaeger &middot; Prometheus &middot; Grafana</span>
   </footer>
 
 </div>

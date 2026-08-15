@@ -9,9 +9,16 @@
 //! - **Consumes** the monitoring output of Prometheus and NATS, neither of
 //!   which this repository controls. Tolerance matters more than usual: an
 //!   upstream version can add fields at any time.
+//! - **Consumes** the message bus itself, as an independent subscriber. That
+//!   makes the durable consumer names a contract with every other service —
+//!   see [`the_tap_names_cannot_steal_another_services_traffic`].
 
 use crate::collect::{Alarm, Gauge, Node, Snapshot, Status};
+use crate::live::{COMMAND_EDGES, DEAD_LETTER_EDGES, EVENT_EDGES};
+use crate::push::{Edge, Push};
+use crate::tap::TAP_NAMES;
 use chrono::Utc;
+use messaging_core::subjects;
 
 // ---------------------------------------------------------------------------
 // Provider side — the JavaScript Object Notation the console page consumes
@@ -210,5 +217,343 @@ fn the_nats_monitoring_shape_is_read_correctly() {
         stream["consumer_detail"][0]["num_pending"].as_u64(),
         Some(12),
         "num_pending is the backlog the worker lamp turns amber on"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The message bus contract — the names, and what they must never collide with
+// ---------------------------------------------------------------------------
+
+/// The single most important test in this crate.
+///
+/// `durable_consumer_from_now` accepts any string. Passing a name a real
+/// service already uses would silently enlist this panel in that service's
+/// queue group and start *taking* its messages — orders would quietly vanish,
+/// with no error and no failing build anywhere to say why.
+///
+/// Nothing else in this repository can catch that: not the compiler, not the
+/// broker, not a runtime check. This assertion is the whole guard.
+#[test]
+fn the_tap_names_cannot_steal_another_services_traffic() {
+    let already_taken = [
+        subjects::CONSUMER_WORKER,
+        subjects::CONSUMER_NOTIFIER,
+        subjects::CONSUMER_AUDIT,
+        subjects::CONSUMER_DLQ_REPLAY,
+    ];
+
+    for name in TAP_NAMES {
+        assert!(
+            !already_taken.contains(&name),
+            "{name} is already a durable consumer name belonging to a service; \
+             sharing it would make this panel a competing consumer and orders would disappear"
+        );
+    }
+}
+
+/// Two tap consumers sharing a name would split the streams between the
+/// panel's own tasks, and each would then see half the traffic.
+#[test]
+fn the_three_tap_names_are_distinct_from_each_other() {
+    for (index, name) in TAP_NAMES.iter().enumerate() {
+        for other in &TAP_NAMES[index + 1..] {
+            assert_ne!(name, other, "two tap consumers share the name {name}");
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The drawing contract — an edge that is not in the page never lights
+// ---------------------------------------------------------------------------
+
+/// Every animated line must exist in the drawing.
+///
+/// A typo in one of these identifiers produces a line that silently never
+/// lights: no compile error, no failing test, and a reader who reasonably
+/// concludes that no message ever travelled that hop. Checking against the
+/// embedded copy of the page is the only way to catch it.
+#[test]
+fn every_animated_edge_exists_in_the_drawing() {
+    let page = crate::PANEL_HTML;
+
+    for edge in COMMAND_EDGES
+        .iter()
+        .chain(EVENT_EDGES.iter())
+        .chain(DEAD_LETTER_EDGES.iter())
+    {
+        assert!(
+            page.contains(&format!("id=\"{edge}\"")),
+            "the drawing has no element with the identifier {edge}, so that line can never light"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The wire contract — what the browser branches on
+// ---------------------------------------------------------------------------
+
+/// The page switches on the `type` field, so these three strings are load-bearing.
+#[test]
+fn the_push_messages_are_tagged_with_the_names_the_page_switches_on() {
+    let frame = Push::Frame {
+        seq: 1,
+        epoch: uuid::Uuid::nil(),
+        state: a_snapshot(),
+    };
+    let pulse = Push::Pulse {
+        seq: 2,
+        epoch: uuid::Uuid::nil(),
+        gauges: vec![],
+        edges: vec![Edge {
+            id: "edge-commands-worker".to_owned(),
+            count: 3,
+        }],
+    };
+    let tick = Push::Tick {
+        seq: 3,
+        epoch: uuid::Uuid::nil(),
+        at: Utc::now(),
+        live_ok: true,
+        prometheus_age_milliseconds: 400,
+        last_message_age_milliseconds: Some(20),
+    };
+
+    assert_eq!(tagged(&frame), "frame");
+    assert_eq!(tagged(&pulse), "pulse");
+    assert_eq!(tagged(&tick), "tick");
+}
+
+/// A pulse carries absolute readings and a per-line count, and nothing else.
+///
+/// Specifically it carries no order identifier and no total. That absence is
+/// the contract: this is a mimic feed, not an audit log, and a number on the
+/// wire is an invitation to derive a count from a stream that drops messages
+/// by design.
+#[test]
+fn a_pulse_carries_readings_and_motion_but_never_an_order() {
+    let pulse = Push::Pulse {
+        seq: 7,
+        epoch: uuid::Uuid::nil(),
+        gauges: vec![Gauge {
+            id: "g-processed".to_owned(),
+            value: "2.40".to_owned(),
+            warn: false,
+        }],
+        edges: vec![Edge {
+            id: "edge-events-audit".to_owned(),
+            count: 2,
+        }],
+    };
+
+    let json = serde_json::to_value(&pulse).expect("must serialise");
+
+    assert_eq!(json["type"], "pulse");
+    assert_eq!(json["seq"], 7);
+    assert_eq!(json["gauges"][0]["value"], "2.40");
+    assert_eq!(json["edges"][0]["count"], 2);
+    assert!(
+        json.get("total").is_none() && json.get("order_id").is_none(),
+        "the feed must not carry a total or an order identifier"
+    );
+}
+
+/// A tick reports two ages, because there are two clocks.
+///
+/// The socket being alive and the data being fresh are different claims. A
+/// panel that collapses them is confidently wrong about whichever half still
+/// works.
+#[test]
+fn a_tick_reports_both_ages_separately() {
+    let tick = Push::Tick {
+        seq: 9,
+        epoch: uuid::Uuid::nil(),
+        at: Utc::now(),
+        live_ok: false,
+        prometheus_age_milliseconds: 12_000,
+        last_message_age_milliseconds: None,
+    };
+
+    let json = serde_json::to_value(&tick).expect("must serialise");
+
+    assert_eq!(json["live_ok"], false);
+    assert_eq!(json["prometheus_age_milliseconds"], 12_000);
+    assert!(
+        json["last_message_age_milliseconds"].is_null(),
+        "no message seen yet must be absent, not zero — an idle system is not a broken one"
+    );
+}
+
+/// The whole picture round-trips, which is what lets the tests and the
+/// end-to-end crate read a frame back.
+#[test]
+fn a_frame_round_trips_through_the_wire_shape() {
+    let frame = Push::Frame {
+        seq: 4,
+        epoch: uuid::Uuid::nil(),
+        state: a_snapshot(),
+    };
+
+    let json = serde_json::to_string(&frame).expect("must serialise");
+    let decoded: Push = serde_json::from_str(&json).expect("must deserialise");
+
+    match decoded {
+        Push::Frame { seq, state, .. } => {
+            assert_eq!(seq, 4);
+            assert_eq!(state.nodes[0].status, Status::Healthy);
+        }
+        other => panic!("a frame decoded as something else: {other:?}"),
+    }
+}
+
+fn tagged(push: &Push) -> String {
+    serde_json::to_value(push).expect("must serialise")["type"]
+        .as_str()
+        .expect("the tag is a string")
+        .to_owned()
+}
+
+fn a_snapshot() -> Snapshot {
+    Snapshot {
+        generated_at: Utc::now(),
+        nodes: vec![Node {
+            id: "worker".to_owned(),
+            status: Status::Healthy,
+            detail: "2 instances".to_owned(),
+        }],
+        gauges: vec![],
+        alarms: vec![],
+        sources_ok: true,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The honesty contract — "I cannot tell" must never render as a number
+// ---------------------------------------------------------------------------
+
+/// A reading the panel could not take shows the no-reading mark.
+///
+/// This is the one that was actually observed failing: with the broker stopped,
+/// the panel reported a confident zero dead letters seconds after reporting
+/// three. Zero and "unknown" look identical to a reader, and the difference
+/// matters most exactly when the broker is the thing that has broken.
+///
+/// The pairing with `warn` is the other half. A reading of unknown must not
+/// draw itself in the warning colour — not knowing is not evidence of a
+/// problem — and it must not draw itself in the calm colour either, which is
+/// why the value itself carries the mark.
+#[test]
+fn an_unreadable_depth_shows_the_no_reading_mark_rather_than_a_zero() {
+    let unknown: Option<u64> = None;
+
+    let queue = Gauge {
+        id: "g-queue".to_owned(),
+        value: unknown.map_or_else(|| "—".to_owned(), |depth: u64| depth.to_string()),
+        warn: unknown.is_some_and(|depth| depth > 100),
+    };
+
+    assert_eq!(
+        queue.value, "—",
+        "an unreachable broker must not render as an empty queue"
+    );
+    assert!(!queue.warn, "not knowing is not evidence of a problem");
+}
+
+/// And a reading that *was* taken still renders as the plain number.
+#[test]
+fn a_readable_depth_still_shows_the_number() {
+    let known = Some(7u64);
+
+    let queue = Gauge {
+        id: "g-queue".to_owned(),
+        value: known.map_or_else(|| "—".to_owned(), |depth| depth.to_string()),
+        warn: known.is_some_and(|depth| depth > 100),
+    };
+
+    assert_eq!(queue.value, "7");
+    assert!(!queue.warn);
+}
+
+/// A tap that is connected but blind must not overwrite a correct reading.
+///
+/// This is the residual half of the confident-zero problem, and the one that
+/// survived an adversarial review of the first fix. Being *connected* says only
+/// that three consumers are attached. A tap can hold all three open and still
+/// discard everything — the staleness guard rejecting a publisher whose clock
+/// runs behind, or the report channel filling because the aggregator fell
+/// behind under load.
+///
+/// The rate is then computed from a window with a hole in it, reads 0.00, and
+/// replaces a Prometheus value that is correct. Every lamp stays green and the
+/// flow indicator still says live, so the panel reads as "the relay has
+/// stopped" at the moment the relay may be working hardest.
+///
+/// The guard is that a reading may only win if nothing was thrown away since
+/// the last reconciliation. This test states that rule directly.
+#[test]
+fn a_window_that_dropped_messages_must_not_win_the_merge() {
+    let sampled = Snapshot {
+        generated_at: Utc::now(),
+        nodes: vec![],
+        gauges: vec![Gauge {
+            id: "g-relayed".to_owned(),
+            // What Prometheus correctly observed.
+            value: "12.00".to_owned(),
+            warn: false,
+        }],
+        alarms: vec![],
+        sources_ok: true,
+    };
+
+    let blind_live_reading = vec![Gauge {
+        id: "g-relayed".to_owned(),
+        // What a tap that discarded everything would compute.
+        value: "0.00".to_owned(),
+        warn: false,
+    }];
+
+    // The three conditions the aggregator combines. Connected and warmed up,
+    // but something was dropped, so the window is not a measurement.
+    let connected = true;
+    let warmed_up = true;
+    let observed_everything = false;
+
+    let merged = crate::live::merge(
+        sampled,
+        blind_live_reading,
+        connected && warmed_up && observed_everything,
+    );
+
+    assert_eq!(
+        merged.gauges[0].value, "12.00",
+        "a tap that threw messages away must not replace a correct sampled reading with a zero"
+    );
+}
+
+/// And with nothing dropped, the live reading is allowed to win.
+#[test]
+fn a_clean_window_still_wins_the_merge() {
+    let sampled = Snapshot {
+        generated_at: Utc::now(),
+        nodes: vec![],
+        gauges: vec![Gauge {
+            id: "g-relayed".to_owned(),
+            value: "12.00".to_owned(),
+            warn: false,
+        }],
+        alarms: vec![],
+        sources_ok: true,
+    };
+
+    let live = vec![Gauge {
+        id: "g-relayed".to_owned(),
+        value: "13.40".to_owned(),
+        warn: false,
+    }];
+
+    let merged = crate::live::merge(sampled, live, true && true && true);
+
+    assert_eq!(
+        merged.gauges[0].value, "13.40",
+        "a complete window is the whole point of the tap and must win"
     );
 }

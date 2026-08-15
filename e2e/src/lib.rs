@@ -41,6 +41,8 @@ pub struct Endpoints {
     pub nats_monitor: String,
     pub prometheus: String,
     pub database_url: String,
+    /// The mimic panel, which serves its own merged snapshot at `/api/state`.
+    pub mimic: String,
 }
 
 impl Endpoints {
@@ -60,6 +62,8 @@ impl Endpoints {
             database_url: std::env::var("E2E_DATABASE_URL").unwrap_or_else(|_| {
                 "postgres://devuser:devpassword@localhost:5432/devdb".to_owned()
             }),
+            mimic: std::env::var("E2E_MIMIC_URL")
+                .unwrap_or_else(|_| "http://localhost:8090".to_owned()),
         }
     }
 }
