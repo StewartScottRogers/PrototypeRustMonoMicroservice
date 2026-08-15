@@ -22,6 +22,7 @@
     <None Include="$(MSBuildThisFileDirectory)..\DevStart.cmd" Link="DevStart.cmd" />
     <None Include="$(MSBuildThisFileDirectory)..\DevDemo.cmd" Link="DevDemo.cmd" />
     <None Include="$(MSBuildThisFileDirectory)..\DevReplay.cmd" Link="DevReplay.cmd" />
+    <None Include="$(MSBuildThisFileDirectory)..\DevReplayDryRun.cmd" Link="DevReplayDryRun.cmd" />
     <None Include="$(MSBuildThisFileDirectory)..\DevConsole.cmd" Link="DevConsole.cmd" />
     <None Include="$(MSBuildThisFileDirectory)..\DevStatus.cmd" Link="DevStatus.cmd" />
     <None Include="$(MSBuildThisFileDirectory)..\DevLogs.cmd" Link="DevLogs.cmd" />

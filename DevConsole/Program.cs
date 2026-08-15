@@ -38,6 +38,7 @@ internal static class Program
         ["logs"] = "DevLogs.cmd",
         ["demo"] = "DevDemo.cmd",
         ["replay"] = "DevReplay.cmd",
+        ["replaydry"] = "DevReplayDryRun.cmd",
         ["gource"] = "DevGource.cmd",
         ["stop"] = "DevStop.cmd",
         ["delete"] = "DevDelete.cmd",
@@ -236,7 +237,9 @@ internal static class Program
 
         foreach (var (name, script) in Scripts)
         {
-            Console.WriteLine($"  {name,-8} {script}");
+            // Padded to the longest name rather than to a number somebody
+            // guessed, so adding a script cannot quietly break the column.
+            Console.WriteLine($"  {name.PadRight(Scripts.Keys.Max(key => key.Length))} {script}");
         }
 
         Console.WriteLine();
