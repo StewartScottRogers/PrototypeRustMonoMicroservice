@@ -22,6 +22,7 @@ jobs:
     outputs:
       services: ${{ steps.detect.outputs.services }}
       any: ${{ steps.detect.outputs.any }}
+      version: ${{ steps.detect.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -29,11 +30,45 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           cache-key: metadata
+      # Two modes. On a branch or pull request, build every service. On a
+      # release tag, build only the one crate the tag names - a release of
+      # worker-service must not republish the other seven images under a
+      # version number that has nothing to do with them.
+      #
+      # The reference name is read through the environment rather than
+      # interpolated into this script, because a branch or tag name is
+      # attacker-controlled text and `${{ }}` inside a run block is pasted in
+      # before the shell ever sees it.
       - id: detect
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
-          services="$(.github/scripts/binary-crates.sh)"
+          all="$(.github/scripts/binary-crates.sh)"
+          version=""
+          services="$all"
+
+          if [ "$REF_TYPE" = "tag" ]; then
+            # release-plz tags are <crate>-v<version>, for example
+            # worker-service-v0.2.0. `%-v*` strips the shortest suffix starting
+            # at "-v"; `##*-v` strips the longest prefix ending at it.
+            crate="${REF_NAME%-v*}"
+            version="${REF_NAME##*-v}"
+            if jq -e --arg c "$crate" 'index($c) != null' <<<"$all" > /dev/null; then
+              services="$(jq -c --arg c "$crate" '[$c]' <<<"$all")"
+            else
+              # A tag for a library crate, or for the end-to-end harness. There
+              # is no image to build, and that is not a failure.
+              echo "Tag $REF_NAME names '$crate', which has no image. Nothing to build."
+              services="[]"
+              version=""
+            fi
+          fi
+
           echo "Services: $services"
+          echo "Version: ${version:-<none>}"
           echo "services=$services" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$services" = "[]" ]; then any=false; else any=true; fi
           echo "any=$any" >> "$GITHUB_OUTPUT"
 
@@ -78,6 +113,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # `type=semver` is deliberately absent. It parses the git tag itself as a
+      # version, and `worker-service-v0.2.0` is not a valid version string - it
+      # would be skipped with a warning and the image would never get a version
+      # tag. The discover job has already split the number out of the tag, so
+      # the plain value is used instead.
       - name: Derive tags and labels
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
@@ -87,8 +127,9 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=sha,format=long
-            type=semver,pattern={{version}}
+            type=raw,value=${{ needs.discover.outputs.version }},enable=${{ needs.discover.outputs.version != '' }}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ needs.discover.outputs.version != '' }}
 
       - name: Build and push
         id: build

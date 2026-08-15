@@ -1,0 +1,104 @@
+name: Release
+
+# Two halves of one loop, both driven by release-plz and both running only on
+# master:
+#
+#   release-pr  opens (or force-updates) a single "chore(release): ..." pull
+#               request holding every pending version bump and changelog entry.
+#               Nothing is tagged or published while it is open.
+#   release     runs after that pull request is merged, sees version numbers in
+#               the manifests that have no matching git tag, and creates the tag
+#               and the GitHub Release for each one.
+#
+# The tag it creates looks like `worker-service-v0.2.0`, which is what
+# .github/workflows/image.yml triggers on to build and publish that one service's
+# image at that version. See .claude/skills/rust-release/SKILL.md.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never two release runs at once: both halves write to the repository, and two
+# concurrent runs would race to create the same branch or the same tag.
+# cancel-in-progress is deliberately false - cancelling half-way through tagging
+# would leave some crates released and others not.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # A pull request opened using the automatic GITHUB_TOKEN does not trigger any
+  # other workflow. That is a GitHub loop-prevention rule, and it is fatal here:
+  # master requires the "CI OK", "Image OK" and "Security OK" checks, so a
+  # release pull request with no checks on it can never be merged. The same rule
+  # means a tag pushed with GITHUB_TOKEN would not start the Image workflow.
+  #
+  # RELEASE_PLZ_TOKEN is a fine-grained personal access token that avoids both
+  # problems. The fallback keeps this workflow runnable before that secret
+  # exists - it will open a pull request, it just will not have checks on it.
+  # SKILL.md has the exact token scopes and the manual nudge.
+  RELEASE_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+
+jobs:
+  release-pr:
+    name: Release pull request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the release branch
+      pull-requests: write # open and update the release pull request
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Whole history. release-plz works out the next version number from
+          # the commits since each crate's last tag, and a shallow checkout has
+          # neither those commits nor those tags.
+          fetch-depth: 0
+          # release-plz authenticates with the token passed to it below, so the
+          # checkout does not need to leave one behind in .git/config.
+          persist-credentials: false
+
+      # release-plz shells out to cargo to read the workspace graph, so a
+      # toolchain has to be present even though nothing is compiled here.
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: release
+
+      - name: Open or update the release pull request
+        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ env.RELEASE_TOKEN }}
+
+  release:
+    name: Tag and release
+    # Strictly after the pull request job. Both write to the repository, and
+    # release-plz reads the manifests on master - letting them overlap would
+    # mean one reading a tree the other is mid-way through changing.
+    needs: release-pr
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the git tags and the GitHub Releases
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: release
+
+      # A no-op on any push that did not merge a release pull request: it
+      # compares each crate's manifest version against the tags that exist and
+      # does nothing when they already match.
+      - name: Tag and publish the GitHub Releases
+        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ env.RELEASE_TOKEN }}
