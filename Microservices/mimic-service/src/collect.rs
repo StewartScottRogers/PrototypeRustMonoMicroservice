@@ -541,6 +541,48 @@ impl Collector {
                 },
                 warn: p99.is_some_and(|seconds| seconds > LATENCY_WARN_SECONDS),
             },
+            // ---- the three tools, two readings each ----
+            //
+            // Until now these were drawn on the panel with no numbers at all,
+            // which left an operator asking "is the tracing still recording?"
+            // with nowhere to look. Each gets a *stock* and a *flow*: how much
+            // it holds, and whether anything is still arriving. Neither answers
+            // the other's question — a large store with no inflow is a system
+            // that stopped ten minutes ago, and reads as healthy if you only
+            // look at the total.
+            self.count_gauge("g-prom-full", "prometheus_tsdb_head_series")
+                .await,
+            self.rate_gauge(
+                "g-prom-flow",
+                "rate(prometheus_tsdb_head_samples_appended_total[1m])",
+            )
+            .await,
+            // Not `spans_received_total`, which stays at zero forever here:
+            // spans arrive over OpenTelemetry Protocol and are counted as
+            // saved, not received. Measured on the running stack — the received
+            // counter read 0 while 225,035 spans were sitting in storage.
+            self.count_gauge(
+                "g-jaeger-full",
+                "sum(jaeger_collector_spans_saved_by_svc_total)",
+            )
+            .await,
+            self.rate_gauge(
+                "g-jaeger-flow",
+                "sum(rate(jaeger_collector_spans_saved_by_svc_total[1m]))",
+            )
+            .await,
+            // The synchronous path. It crosses no message bus, so the tap
+            // cannot see it and this counter is the only evidence the panel can
+            // have that the call still works.
+            self.rate_gauge("g-echo-flow", "sum(rate(relay_calls_total[15s]))")
+                .await,
+            self.count_gauge("g-grafana-full", "grafana_stat_totals_dashboard")
+                .await,
+            self.rate_gauge(
+                "g-grafana-flow",
+                "sum(rate(grafana_http_request_duration_seconds_count[1m]))",
+            )
+            .await,
         ];
 
         Snapshot {
@@ -549,6 +591,47 @@ impl Collector {
             gauges,
             alarms,
             sources_ok,
+        }
+    }
+
+    /// A whole-number count, shortened so it fits the badge on the drawing.
+    ///
+    /// 4579 becomes `4.6k` and 225035 becomes `225k`. The badge is 56 units
+    /// wide and holds about five characters, so an unshortened count would
+    /// either overflow its box or force every badge on the panel to be sized
+    /// for the widest number any of them might ever reach.
+    ///
+    /// Shortening is a display decision, not a measurement one: the exact value
+    /// is a Prometheus query away, and an operator reading "how full is it"
+    /// wants the magnitude rather than the units digit.
+    async fn count_gauge(&self, id: &str, query: &str) -> Gauge {
+        let value = match self.scalar(query).await {
+            Some(count) => Self::compact(count),
+            None => "—".to_owned(),
+        };
+
+        Gauge {
+            id: id.to_owned(),
+            value,
+            warn: false,
+        }
+    }
+
+    /// Shortens a count to at most five characters.
+    ///
+    /// `f64` rather than an integer type because that is what the Prometheus
+    /// programming interface returns for every value, counts included.
+    fn compact(count: f64) -> String {
+        if count < 1_000.0 {
+            format!("{count:.0}")
+        } else if count < 10_000.0 {
+            // One decimal below ten thousand, where the difference between
+            // 4.6k and 4.9k is still worth seeing.
+            format!("{:.1}k", count / 1_000.0)
+        } else if count < 1_000_000.0 {
+            format!("{:.0}k", count / 1_000.0)
+        } else {
+            format!("{:.1}M", count / 1_000_000.0)
         }
     }
 
@@ -671,6 +754,36 @@ mod tests {
         assert!(classify_worker_health(Some(LATENCY_WARN_SECONDS), QUEUE_WARN_DEPTH).is_none());
         assert!(classify_worker_health(Some(LATENCY_WARN_SECONDS + 0.001), 0).is_some());
         assert!(classify_worker_health(None, QUEUE_WARN_DEPTH + 1).is_some());
+    }
+
+    #[test]
+    fn a_count_is_shortened_to_fit_its_badge() {
+        // The badge on the drawing is 56 units wide and holds about five
+        // characters, so every one of these must come out at five or fewer.
+        for (count, expected) in [
+            (0.0, "0"),
+            (7.0, "7"),
+            (999.0, "999"),
+            (1_000.0, "1.0k"),
+            (4_579.0, "4.6k"),
+            // 9_950 is deliberately absent. It divides to 9.949999… in binary
+            // and formats as "9.9k" rather than the "10.0k" the arithmetic
+            // suggests — true of any language using binary floating point, and
+            // a trap to assert either way round.
+            (9_900.0, "9.9k"),
+            (10_000.0, "10k"),
+            (225_035.0, "225k"),
+            (999_999.0, "1000k"),
+            (1_000_000.0, "1.0M"),
+            (12_300_000.0, "12.3M"),
+        ] {
+            let shortened = Collector::compact(count);
+            assert_eq!(shortened, expected, "{count} shortened wrongly");
+            assert!(
+                shortened.chars().count() <= 5,
+                "{shortened} will not fit the badge"
+            );
+        }
     }
 
     #[test]

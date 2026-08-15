@@ -104,6 +104,14 @@ pub const SERVICE_INFO: &str = "service_info";
 
 /// Orders accepted by the gateway and written to the outbox.
 pub const ORDERS_ACCEPTED: &str = "orders_accepted_total";
+/// Synchronous calls the gateway made to the echo service, and got an answer to.
+///
+/// The synchronous path had no counter at all until the mimic panel needed one.
+/// Nothing on the panel could say whether that call was still working, because
+/// nothing anywhere counted it: a request over the Hypertext Transfer Protocol
+/// leaves no trace on the message bus the panel taps, so an uninstrumented call
+/// is invisible to it by construction.
+pub const RELAY_CALLS: &str = "relay_calls_total";
 /// Outbox rows published to the broker by the relay.
 pub const OUTBOX_RELAYED: &str = "outbox_relayed_total";
 /// Commands processed successfully by a worker.
