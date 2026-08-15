@@ -115,6 +115,16 @@ from the paths the commit touched, not from the scope.
    package visible to release-plz. `publish = false` in `release-plz.toml` is
    the separate switch that stops the pipeline running `cargo publish`.
 
+   The named registry has one knock-on effect, already handled: cargo-deny
+   stops treating these crates as private, and `allow-wildcard-paths` only
+   exempts private crates. The fix is not to weaken that check — the three
+   internal libraries in `[workspace.dependencies]` now carry a version
+   requirement alongside their path, so there is no wildcard left to allow.
+   That is the honest declaration anyway once crates version independently, and
+   release-plz rewrites those numbers itself when a library is bumped. Setting
+   `[licenses.private] registries` in `deny.toml` does *not* work: the bans
+   check does not consult it.
+
    `git_only = true` belongs to the same fix. Without it release-plz asks
    crates.io which version is current, and for a crate that was never
    published the answer is nothing, so it concludes there is nothing to do.

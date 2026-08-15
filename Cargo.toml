@@ -39,9 +39,20 @@ repository = "https://github.com/StewartScottRogers/PrototypeRustMonoMicroservic
 # `dep.workspace = true`, so a bump happens in one place and Dependabot files
 # one PR instead of one per crate.
 [workspace.dependencies]
-service-core = { path = "Microservices/service-core" }
-messaging-core = { path = "Microservices/messaging-core" }
-db-core = { path = "Microservices/db-core" }
+# The three internal libraries. Each carries a version requirement as well as a
+# path, and the version is not decoration:
+#
+#   * `path` alone means "whatever is in that directory", which was fine when
+#     every crate in the workspace moved together. Now that each crate has its
+#     own version, "whatever is there" stops being a statement about anything.
+#   * cargo reads a path-and-version dependency as the version requirement `^0.1`
+#     satisfied by the local directory. A bare path is the requirement `*`, and
+#     cargo-deny denies wildcards.
+#   * release-plz updates these numbers itself: bumping service-core to 0.2.0
+#     rewrites the line below in the same release pull request.
+service-core = { path = "Microservices/service-core", version = "0.1.0" }
+messaging-core = { path = "Microservices/messaging-core", version = "0.1.0" }
+db-core = { path = "Microservices/db-core", version = "0.1.0" }
 
 anyhow = "1"
 # NATS client. Pure Rust - no C library to install, which is why the runtime

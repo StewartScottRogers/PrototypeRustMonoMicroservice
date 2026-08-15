@@ -32,9 +32,11 @@ allow = [
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# `service-core.workspace = true` resolves to a path dependency with no version,
-# which cargo-deny reads as `*`. These crates are unpublished, so a version
-# requirement would be meaningless — but wildcards on crates.io deps stay denied.
+# Kept for dev-dependencies, which may still name a path with no version. The
+# three internal libraries no longer need it: each is declared in the root
+# manifest with both a path and a version requirement, so nothing in the graph
+# resolves to `*`. Do not reach for this to silence a wildcard on a crates.io
+# dependency — that is the case it is meant to keep denying.
 allow-wildcard-paths = true
 
 [sources]
