@@ -81,10 +81,12 @@ from the paths the commit touched, not from the scope.
    **Workflows: read and write** (the last is needed only if a release ever
    touches a file under `.github/workflows/`).
 
-   Until that secret exists the workflow falls back to `GITHUB_TOKEN` and still
-   opens a release pull request — it simply has no checks. Closing and
-   reopening it by hand starts them, which is the manual escape hatch, not the
-   intended state.
+   Until that secret exists the `release-pr` job is **skipped**, not run and
+   failed. That is deliberate: without the token it can only produce a 403, and
+   a workflow that reports red on every push teaches everybody to ignore the
+   colour. "Not configured" and "broken" should not look the same. Tagging is
+   unaffected — the `release` job runs either way, per rule 8, which is how the
+   first eleven tags were cut with no token in place at all.
 
 2. **Each crate owns its version number.** No crate inherits
    `version.workspace = true`; the root `[workspace.package]` has no `version`
@@ -178,7 +180,8 @@ nothing depends on it, so a version number for it would mean nothing.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `Failed to open PR … 403 … GitHub Actions is not permitted to create or approve pull requests` | The repository setting of that name is off, and the workflow fell back to `GITHUB_TOKEN` | Set `RELEASE_PLZ_TOKEN` (rule 1) — a personal access token is not subject to that setting. Turning the setting on instead lets the pull request be created, but it still arrives with no checks and so still cannot be merged. Tagging is unaffected either way: the `release` job runs regardless, per rule 8. |
+| `Release pull request` shows as skipped on every run | `RELEASE_PLZ_TOKEN` is not set, so the job is skipped by design (rule 1) | Set the secret. Nothing else is wrong, and tagging is already working. |
+| `Failed to open PR … 403 … GitHub Actions is not permitted to create or approve pull requests` | The token exists but is not permitted — a `GITHUB_TOKEN` reached the job, or the personal access token lacks **Pull requests: write** | Check the token's scopes. A personal access token is not subject to the repository's "Allow GitHub Actions to create and approve pull requests" setting; turning that setting on instead lets the pull request be created, but it still arrives with no checks and so still cannot be merged. |
 | Release pull request has no status checks | Opened with `GITHUB_TOKEN` | Set `RELEASE_PLZ_TOKEN` (rule 1). To unstick the existing one, close and reopen it. |
 | Merged the release pull request, no tag appeared | The `release` job did not run, or ran before the merge commit landed | Re-run the `Release` workflow on `master`; it is safe to run repeatedly and is a no-op when versions and tags already match. |
 | Tag exists, no image published | Tag pushed with `GITHUB_TOKEN`, so no workflow triggered | Set `RELEASE_PLZ_TOKEN`. To publish the image now, run `Image` from `workflow_dispatch` on that tag. |

@@ -46,6 +46,18 @@ env:
 jobs:
   release-pr:
     name: Release pull request
+    # Skipped, rather than attempted and failed, when RELEASE_PLZ_TOKEN is not
+    # set. Without it this job opens a pull request using the automatic
+    # GITHUB_TOKEN, which the repository setting "Allow GitHub Actions to
+    # create and approve pull requests" forbids, and the whole workflow reports
+    # red on every single push to master. A permanently red workflow is worse
+    # than a missing one: it teaches everybody to ignore the colour, and the
+    # next genuine failure is ignored with it.
+    #
+    # "Not configured" and "broken" are different claims and should not look
+    # the same. A skipped job says the first. Add the secret and this job
+    # starts running with no edit here.
+    if: ${{ secrets.RELEASE_PLZ_TOKEN != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # push the release branch
