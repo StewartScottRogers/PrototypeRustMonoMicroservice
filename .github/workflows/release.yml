@@ -1,18 +1,26 @@
 name: Release
 
-# Two halves of one loop, both driven by release-plz and both running only on
-# master:
-#
-#   release-pr  opens (or force-updates) a single "chore(release): ..." pull
-#               request holding every pending version bump and changelog entry.
-#               Nothing is tagged or published while it is open.
-#   release     runs after that pull request is merged, sees version numbers in
-#               the manifests that have no matching git tag, and creates the tag
-#               and the GitHub Release for each one.
+# Creates the git tag and the GitHub Release for every crate whose version in
+# its manifest has no matching tag yet, and does nothing at all when they
+# already match. Safe to run repeatedly.
 #
 # The tag it creates looks like `worker-service-v0.2.0`, which is what
-# .github/workflows/image.yml triggers on to build and publish that one service's
-# image at that version. See .claude/skills/rust-release/SKILL.md.
+# .github/workflows/image.yml triggers on to build and publish that one
+# service's image at that version.
+#
+# There is no "release pull request" job, and its absence is deliberate rather
+# than unfinished. release-plz can open a pull request that bumps versions and
+# writes changelogs, and it decides the next version by running `cargo package`
+# — which resolves every dependency from a registry. The services here depend on
+# messaging-core, db-core and service-core, which exist nowhere but this
+# repository, so that resolution cannot succeed and the job could only ever
+# fail. It was tried against both possible `publish` settings and fails on both.
+#
+# So version numbers are raised by hand, in the ordinary pull request that
+# earns the raise, and this workflow turns a raised version into a tag, a
+# release and an image. What it would take to get the automation back is a
+# registry holding the three library crates; see
+# .claude/skills/rust-release/SKILL.md.
 
 on:
   push:
@@ -22,79 +30,24 @@ on:
 permissions:
   contents: read
 
-# Never two release runs at once: both halves write to the repository, and two
-# concurrent runs would race to create the same branch or the same tag.
-# cancel-in-progress is deliberately false - cancelling half-way through tagging
-# would leave some crates released and others not.
+# Never two release runs at once: two would race to create the same tag.
+# cancel-in-progress is deliberately false - cancelling half-way through
+# tagging would leave some crates released and others not.
 concurrency:
   group: release
   cancel-in-progress: false
 
-env:
-  # A pull request opened using the automatic GITHUB_TOKEN does not trigger any
-  # other workflow. That is a GitHub loop-prevention rule, and it is fatal here:
-  # master requires the "CI OK", "Image OK" and "Security OK" checks, so a
-  # release pull request with no checks on it can never be merged. The same rule
-  # means a tag pushed with GITHUB_TOKEN would not start the Image workflow.
-  #
-  # RELEASE_PLZ_TOKEN is a fine-grained personal access token that avoids both
-  # problems. The fallback keeps this workflow runnable before that secret
-  # exists - it will open a pull request, it just will not have checks on it.
-  # SKILL.md has the exact token scopes and the manual nudge.
-  RELEASE_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
-
 jobs:
-  # Is the token configured? A whole job to answer one yes-or-no question,
-  # because of where GitHub allows the answer to be asked.
-  #
-  # The obvious spelling is `if: ${{ secrets.RELEASE_PLZ_TOKEN != '' }}` on the
-  # job below. It is not merely ineffective - the `secrets` context is not
-  # available in a job-level `if` at all, and using it there makes the whole
-  # file invalid. Every job in it then fails to start, including the one that
-  # creates the tags. A step-level `if` may read `secrets`, and a job-level one
-  # may read `needs`; so the question is asked in a step here and the answer
-  # travels as a job output.
-  token:
-    name: Check for a release token
-    runs-on: ubuntu-latest
-    outputs:
-      present: ${{ steps.check.outputs.present }}
-    steps:
-      - id: check
-        env:
-          # Through the environment, never interpolated into the script. A
-          # secret pasted into a run block is one `set -x` away from the log.
-          TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
-        run: |
-          if [ -n "$TOKEN" ]; then present=true; else present=false; fi
-          echo "RELEASE_PLZ_TOKEN present: $present"
-          echo "present=$present" >> "$GITHUB_OUTPUT"
-
-  release-pr:
-    name: Release pull request
-    # Skipped, rather than attempted and failed, when the token is not set.
-    # Without it this job can only open a pull request using the automatic
-    # GITHUB_TOKEN, which the repository setting "Allow GitHub Actions to
-    # create and approve pull requests" forbids, and the whole workflow then
-    # reports red on every single push to master. A permanently red workflow is
-    # worse than a missing one: it teaches everybody to ignore the colour, and
-    # the next genuine failure is ignored with it.
-    #
-    # "Not configured" and "broken" are different claims and should not look
-    # the same. A skipped job says the first. Add the secret and this job
-    # starts running with no edit here.
-    needs: token
-    if: needs.token.outputs.present == 'true'
+  release:
+    name: Tag and release
     runs-on: ubuntu-latest
     permissions:
-      contents: write # push the release branch
-      pull-requests: write # open and update the release pull request
+      contents: write # create the git tags and the GitHub Releases
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          # Whole history. release-plz works out the next version number from
-          # the commits since each crate's last tag, and a shallow checkout has
-          # neither those commits nor those tags.
+          # Whole history. release-plz decides what is already released by
+          # looking at the tags, and a shallow checkout has none of them.
           fetch-depth: 0
           # release-plz authenticates with the token passed to it below, so the
           # checkout does not need to leave one behind in .git/config.
@@ -106,47 +59,15 @@ jobs:
         with:
           cache-key: release
 
-      - name: Open or update the release pull request
-        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
-        with:
-          command: release-pr
-        env:
-          GITHUB_TOKEN: ${{ env.RELEASE_TOKEN }}
-
-  release:
-    name: Tag and release
-    # Strictly after the pull request job. Both write to the repository, and
-    # release-plz reads the manifests on master - letting them overlap would
-    # mean one reading a tree the other is mid-way through changing.
-    #
-    # `always()` because "after" is all that is wanted, not "only if that
-    # worked". The two jobs answer unrelated questions - one proposes the next
-    # version numbers, the other tags the ones already merged - and tagging is
-    # not made wrong by a pull request that could not be opened. Without this,
-    # the repository setting "Allow GitHub Actions to create and approve pull
-    # requests" being off produced a 403 in the first job and silently skipped
-    # every tag and release in the second.
-    needs: [token, release-pr]
-    if: always()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # create the git tags and the GitHub Releases
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: ./.github/actions/setup-rust
-        with:
-          cache-key: release
-
-      # A no-op on any push that did not merge a release pull request: it
-      # compares each crate's manifest version against the tags that exist and
-      # does nothing when they already match.
+      # RELEASE_PLZ_TOKEN matters even with no pull request to open: a tag
+      # pushed using the automatic GITHUB_TOKEN starts no other workflow, which
+      # is a GitHub loop-prevention rule, so the Image workflow would never see
+      # it and no versioned image would ever be built. The fallback keeps this
+      # runnable without the secret - the tags and releases still appear, and
+      # the image builds have to be dispatched by hand.
       - name: Tag and publish the GitHub Releases
         uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
         with:
           command: release
         env:
-          GITHUB_TOKEN: ${{ env.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}

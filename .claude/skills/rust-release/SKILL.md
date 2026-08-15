@@ -1,20 +1,19 @@
 ---
 name: rust-release
 description: >
-  Cut releases of the Rust crates in this monorepo with release-plz — the
-  Conventional Commits that drive version numbers, the release pull request, the
-  per-crate git tags and GitHub Releases, and the versioned container image that
-  follows from each tag. Use when a release did not happen, when a version
-  number moved unexpectedly, when the release pull request has no status checks
-  on it, when adding a crate that should or should not be released, or when
-  deciding what a commit message needs to say.
+  Cut releases of the Rust crates in this monorepo with release-plz — raising a
+  version by hand, the per-crate git tags and GitHub Releases that follow, and
+  the versioned container image built from each tag. Use when a release did not
+  happen, when a version number moved unexpectedly, when adding a crate that
+  should or should not be released, or when wondering why there is no automatic
+  release pull request.
 ---
 
 # Releasing the Rust crates
 
-`release-plz.toml` and `.github/workflows/release.yml` turn merged commits into
-version numbers, changelogs, git tags, GitHub Releases, and versioned container
-images. Nothing is published to any registry.
+`release-plz.toml` and `.github/workflows/release.yml` turn a raised version
+number into a git tag, a GitHub Release, and a versioned container image.
+Nothing is published to any registry.
 
 > **Write everything out in full.** No acronyms or abbreviations in prose. A
 > widely recognised acronym may follow the full term in parentheses on first
@@ -23,78 +22,69 @@ images. Nothing is published to any registry.
 
 ## The loop, once through
 
-1. A pull request merges into `master` with a commit subject like
-   `feat(worker-service): add a retry budget`.
-2. The `Release` workflow runs `release-plz release-pr`. It sees a `feat`
-   commit touching `Microservices/worker-service`, decides the next version is
-   `0.2.0`, and opens one pull request titled `chore(release): ...` that edits
-   `Microservices/worker-service/Cargo.toml` and writes
-   `Microservices/worker-service/CHANGELOG.md`.
-3. That pull request is reviewed like any other and merged. **This is the
-   release decision.** Until it merges, nothing has been released.
-4. The `Release` workflow runs again, this time reaching `release-plz release`.
-   It compares each manifest version against the existing tags, finds
-   `worker-service` at `0.2.0` with no tag, and creates the tag
-   `worker-service-v0.2.0` plus a GitHub Release with the changelog section as
-   its body.
-5. That tag matches the `*-v*` trigger in `.github/workflows/image.yml`, which
+1. Raise the version in the crate's own `Cargo.toml` — `0.1.0` to `0.2.0` — in
+   the ordinary pull request that earns the raise. **This is the release
+   decision**, and it is a human one.
+2. That pull request is reviewed and merged like any other.
+3. The `Release` workflow runs `release-plz release`. It compares each
+   manifest version against the tags that exist, finds `worker-service` at
+   `0.2.0` with no tag, and creates `worker-service-v0.2.0` plus a GitHub
+   Release. Crates whose version already has a tag are left alone, so the
+   workflow is safe to run repeatedly.
+4. That tag matches the `*-v*` trigger in `.github/workflows/image.yml`, which
    builds **only** `worker-service` and publishes it as `:0.2.0` and `:latest`.
 
-## What decides the version number
+## Why there is no release pull request
 
-Only the commit subject. release-plz reads Conventional Commits:
+release-plz can open a pull request that bumps versions and writes changelogs
+from Conventional Commits. **It cannot work here, and this is settled rather
+than outstanding.**
 
-| Subject starts with | Changelog section | Version move |
+To decide the next version it runs `cargo package`, which resolves every
+dependency from a registry. Every service here depends on `messaging-core`,
+`db-core` or `service-core`, and those exist nowhere but this repository. Both
+possible `publish` settings were tried against both commands, and the two
+requirements are mutually exclusive:
+
+| Root manifest | `release-pr` | `release` |
 | --- | --- | --- |
-| `feat:` | Added | minor — `0.1.0` to `0.2.0` |
-| `fix:` | Fixed | patch — `0.1.0` to `0.1.1` |
-| `perf:` | Performance | patch |
-| `refactor:` | Changed | patch |
-| `doc:`, `test:`, `ci:`, `build:`, `chore:` | as named in `release-plz.toml` | patch |
-| any of the above with `!`, or a `BREAKING CHANGE:` footer | flagged as breaking | major — `0.1.0` to `1.0.0` |
+| `publish = false` | fails — `cargo package` cannot resolve the registry | **skips every crate**, tags included |
+| `publish = ["internal"]` | fails — same | works: tags all eleven crates |
 
-A subject matching none of these produces no changelog entry and no version
-move. **A change worth releasing needs a conventional subject line**; there is
-no way to force a release from an unconventional one except by editing the
-version in the manifest by hand.
+So the job was removed rather than left to fail on every push. What would bring
+it back is a registry holding the three library crates — crates.io, or a
+private registry — at which point `cargo package` resolves and the automation
+becomes available. That is a real decision about publishing internal libraries,
+not a workaround somebody forgot to apply.
 
-Scope the subject to the crate — `feat(worker-service): ...` — for a readable
-changelog. The scope is documentation only; which crates get bumped is decided
-from the paths the commit touched, not from the scope.
+Conventional Commit subjects are still worth writing: they are what a changelog
+would be generated from if that day comes, and they read better in the history
+regardless. They simply do not move a version number today.
 
 ## Non-negotiable rules
 
-1. **The release pull request needs a token that is not `GITHUB_TOKEN`.** A
-   pull request opened using the automatic `GITHUB_TOKEN` triggers no other
-   workflow — GitHub's loop-prevention rule. The ruleset on `master` requires
-   `CI OK`, `Image OK` and `Security OK`, so such a pull request sits with no
-   checks and can never be merged. The same rule means a tag pushed with
-   `GITHUB_TOKEN` never starts the `Image` workflow, so no versioned image is
-   ever built. Create the secret once:
+1. **Tagging with `GITHUB_TOKEN` builds no image.** A tag pushed using the
+   automatic token starts no other workflow — GitHub's loop-prevention rule —
+   so `image.yml` never sees it and no versioned image is ever built. The tags
+   and the GitHub Releases still appear, which is why this looks like it worked
+   until somebody goes looking for the image. `RELEASE_PLZ_TOKEN` is a
+   fine-grained personal access token that is not subject to that rule. Set it
+   once, from the repository's **Settings → Secrets and variables → Actions**
+   page, scoped to this repository with **Contents: read and write**.
+
+   Not with `gh secret set`, unless you are at a real terminal. That command
+   **prompts** for the value, so anywhere its input is piped or redirected — a
+   script, a tool, the `!` prefix in a Claude Code session — it reads
+   end-of-input, stores an *empty* secret, and exits successfully with no
+   output. The secret then exists, lists normally with a creation timestamp,
+   and behaves exactly as though it were absent.
+
+   Without the token, tags and releases still happen; the image builds have to
+   be dispatched by hand, one per tag:
 
    ```
-   gh secret set RELEASE_PLZ_TOKEN
+   gh workflow run image.yml --ref worker-service-v0.2.0
    ```
-
-   Paste a fine-grained personal access token scoped to this repository with
-   **Contents: read and write**, **Pull requests: read and write**, and
-   **Workflows: read and write** (the last is needed only if a release ever
-   touches a file under `.github/workflows/`).
-
-   That command **prompts** for the value, so it needs a real terminal. Run
-   through anything that pipes or redirects its input — a script, a tool, the
-   `!` prefix in a Claude Code session — it reads end-of-input, stores an
-   *empty* secret, and exits successfully with no output. The secret then
-   exists, lists normally, and the job stays skipped. The repository's
-   **Settings → Secrets and variables → Actions** page avoids the whole class
-   of problem, and is the better route when a person is doing this once.
-
-   Until that secret exists the `release-pr` job is **skipped**, not run and
-   failed. That is deliberate: without the token it can only produce a 403, and
-   a workflow that reports red on every push teaches everybody to ignore the
-   colour. "Not configured" and "broken" should not look the same. Tagging is
-   unaffected — the `release` job runs either way, per rule 8, which is how the
-   first eleven tags were cut with no token in place at all.
 
 2. **Each crate owns its version number.** No crate inherits
    `version.workspace = true`; the root `[workspace.package]` has no `version`
@@ -147,20 +137,20 @@ from the paths the commit touched, not from the scope.
    can only mislead. The contract tests in each crate are what guard
    compatibility between services; see `.claude/skills/orchestration-agent/`.
 
-7. **Dependency bumps stay out of the release pull request.**
-   `dependencies_update = false`. Dependabot owns dependency changes, and a
-   release pull request that also ran `cargo update` would make a version bump
+7. **`dependencies_update = false`.** Dependabot owns dependency changes, and
+   mixing a `cargo update` into a release would make a version bump
    indistinguishable from a dependency change in review.
 
-8. **The two jobs must not overlap, and must not depend on each other.**
-   `release` declares `needs: release-pr` for ordering and `if: always()` so
-   that ordering is all it means. The two answer unrelated questions — one
-   proposes the next version numbers, the other tags the ones already merged —
-   and tagging is not made wrong by a pull request that could not be opened.
-   Dropping the `if: always()` is how the first release produced no tags at all.
-   The whole workflow also uses `concurrency: release` with
-   `cancel-in-progress: false`, because both jobs write to the repository and
-   cancelling mid-way through tagging would leave some crates released and
+8. **Never test a secret in a job-level condition.** The `secrets` context is
+   not available there. Using it does not fail that line — it invalidates the
+   **whole workflow file**, and every job in it fails to start, including the
+   one that creates the tags. GitHub reports only "This run likely failed
+   because of a workflow file issue". Ask the question in a *step*, and pass
+   the answer out as a job output if a job needs it.
+
+9. **One job, and it must not overlap itself.** `concurrency: release` with
+   `cancel-in-progress: false`: two runs would race to create the same tag, and
+   cancelling half-way through tagging would leave some crates released and
    others not.
 
 ## Adding a crate
@@ -188,24 +178,20 @@ nothing depends on it, so a version number for it would mean nothing.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `Release pull request` shows as skipped on every run | `RELEASE_PLZ_TOKEN` is not set, so the job is skipped by design (rule 1) | Set the secret. Nothing else is wrong, and tagging is already working. |
-| The secret **exists** and the job is *still* skipped — `Check for a release token` prints `present: false` | The stored value is empty. An empty secret and a missing secret are indistinguishable to a workflow, and `gh secret list` shows both the same way | Almost always `gh secret set` run without a real terminal attached: it prompts for the value, reads end-of-input immediately, stores an empty string, and exits silently and successfully. Anything that pipes or redirects its input does this — including running it through the `!` prefix inside a Claude Code session. Set it from the repository's **Settings → Secrets and variables → Actions** page instead, or from a terminal window opened outside any tool. Confirm with a re-run: `present` must read `true`. |
-| `This run likely failed because of a workflow file issue`, and **no job ran at all** | Something in the file references a context where GitHub does not allow it. The one that caused this: `secrets` in a job-level `if` | Never test a secret in a job-level `if` — the `secrets` context is not available there, and using it invalidates the whole file, taking tagging down with it. Ask the question in a *step* and pass the answer out as a job output, which is what the `token` job exists for. |
-| `Failed to open PR … 403 … GitHub Actions is not permitted to create or approve pull requests` | The token exists but is not permitted — a `GITHUB_TOKEN` reached the job, or the personal access token lacks **Pull requests: write** | Check the token's scopes. A personal access token is not subject to the repository's "Allow GitHub Actions to create and approve pull requests" setting; turning that setting on instead lets the pull request be created, but it still arrives with no checks and so still cannot be merged. |
-| Release pull request has no status checks | Opened with `GITHUB_TOKEN` | Set `RELEASE_PLZ_TOKEN` (rule 1). To unstick the existing one, close and reopen it. |
-| Merged the release pull request, no tag appeared | The `release` job did not run, or ran before the merge commit landed | Re-run the `Release` workflow on `master`; it is safe to run repeatedly and is a no-op when versions and tags already match. |
+| A secret **exists** and a workflow still cannot see it | The stored value is empty. An empty secret and a missing secret are indistinguishable to a workflow, and `gh secret list` shows both the same way | Almost always `gh secret set` run without a real terminal attached: it prompts for the value, reads end-of-input immediately, stores an empty string, and exits silently and successfully. Anything that pipes or redirects its input does this — including the `!` prefix inside a Claude Code session. Set it from the repository's **Settings → Secrets and variables → Actions** page instead. |
+| `This run likely failed because of a workflow file issue`, and **no job ran at all** | Something in the file references a context where GitHub does not allow it. The one that caused this: `secrets` in a job-level `if` | Rule 8. |
+| `cargo package failed` in any release-plz command | `release-pr` or `update` was reinstated | It cannot work here; see "Why there is no release pull request". Raise the version by hand instead. |
+| Raised a version, merged, no tag appeared | The `Release` workflow did not run, or ran before the merge commit landed | Re-run it on `master`. It is safe to run repeatedly and is a no-op when versions and tags already match. |
 | Tag exists, no image published | Tag pushed with `GITHUB_TOKEN`, so no workflow triggered | Set `RELEASE_PLZ_TOKEN`. To publish the image now, run `Image` from `workflow_dispatch` on that tag. |
 | Release job logs `nothing to release` and creates no tags | A manifest went back to `publish = false`, or `git_only = true` was removed from `release-plz.toml` | Rule 5. Confirm with `release-plz release --dry-run --backend github --git-token "$(gh auth token)"`, which lists every tag it would create. |
-| No release pull request at all after a merge | No commit since the last tag had a conventional subject | Land a commit with a `feat:` or `fix:` subject, or bump the version in the manifest by hand and let `release` pick it up. |
-| One crate bumped, its dependents did not | Expected when only that crate's files changed | If a dependent must move too, that is a `fix(dependent): ...` commit against it. |
-| Every crate bumped at once | A commit touched a shared crate under `Microservices/*-core`, so every dependent moved | Correct behaviour. Keep shared-crate changes in their own pull request so the blast radius is visible in review. |
 | `Image` builds nothing on a tag | The tag names a library crate or `e2e` | Correct behaviour — those have no binary target. The discover job logs which crate it read out of the tag. |
+| A library changed but its dependents were not re-released | Nothing bumps them for you now that versions are raised by hand | Raise the dependents too, in the same pull request as the library. Keep shared-crate changes in their own pull request so that blast radius is visible in review. |
 
 ## Deliberately not done
 
-- **No deployment.** Tags and images are the end of this pipeline. Environments,
-  protection rules and the Deployments application programming interface belong
-  to the `gh-deploy-env` skill, which is the next one to build.
+- **No deployment.** Tags and images are the end of this pipeline. Promoting an
+  image to production, the environment and its approval gate belong to the
+  `gh-deploy-env` skill.
 - **No release on a branch other than `master`.** Release candidates and
   maintenance branches would need `release_always` and a branch configuration in
   `release-plz.toml`; there is no second supported version of anything here yet.
