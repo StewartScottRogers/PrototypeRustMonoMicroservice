@@ -16,16 +16,43 @@ members = ["Microservices/*", "e2e"]
 # `key.workspace = true`.
 edition = "2024"
 license = "MIT"
-publish = false
+
+# "Publishable only to a registry called `internal`" - and no registry by that
+# name is configured anywhere, so `cargo publish` stops with:
+#
+#   error: registry index was not found in any configuration: `internal`
+#
+# The obvious spelling of that intent is `publish = false`, and it was that
+# until the release pipeline was wired up. The reason it is not any more:
+# release-plz skips a package cargo marks as unpublishable *entirely*, so with
+# `false` here the release job reported "nothing to release" forever and no
+# crate was ever tagged. A named registry that does not exist is refused by
+# cargo just as firmly, while leaving the package visible to release-plz.
+#
+# `cargo publish` is switched off a second time in release-plz.toml, which is
+# what actually stops the pipeline attempting it. This line is the guard
+# against a person running it by hand.
+publish = ["internal"]
 repository = "https://github.com/StewartScottRogers/PrototypeRustMonoMicroservice"
 
 # Single source of truth for dependency versions. Crates opt in with
 # `dep.workspace = true`, so a bump happens in one place and Dependabot files
 # one PR instead of one per crate.
 [workspace.dependencies]
-service-core = { path = "Microservices/service-core" }
-messaging-core = { path = "Microservices/messaging-core" }
-db-core = { path = "Microservices/db-core" }
+# The three internal libraries. Each carries a version requirement as well as a
+# path, and the version is not decoration:
+#
+#   * `path` alone means "whatever is in that directory", which was fine when
+#     every crate in the workspace moved together. Now that each crate has its
+#     own version, "whatever is there" stops being a statement about anything.
+#   * cargo reads a path-and-version dependency as the version requirement `^0.1`
+#     satisfied by the local directory. A bare path is the requirement `*`, and
+#     cargo-deny denies wildcards.
+#   * release-plz updates these numbers itself: bumping service-core to 0.2.0
+#     rewrites the line below in the same release pull request.
+service-core = { path = "Microservices/service-core", version = "0.1.0" }
+messaging-core = { path = "Microservices/messaging-core", version = "0.1.0" }
+db-core = { path = "Microservices/db-core", version = "0.1.0" }
 
 anyhow = "1"
 # NATS client. Pure Rust - no C library to install, which is why the runtime

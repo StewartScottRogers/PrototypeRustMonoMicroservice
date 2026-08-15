@@ -14,13 +14,25 @@
 # to do when a release does not happen, is in .claude/skills/rust-release/SKILL.md.
 
 [workspace]
+# Work out what has already been released by looking at the git tags, not by
+# asking crates.io.
+#
+# This one line is the difference between the release job doing its job and
+# reporting "nothing to release" forever. `publish = false` below stops
+# release-plz running `cargo publish`, but on its own it does *not* stop it
+# consulting the registry to decide which version is current - and these crates
+# have never been published, so that lookup finds nothing and release-plz
+# concludes there is nothing to do. git_only points the same question at the
+# tags, which is where the answer actually lives for a workspace like this one.
+git_only = true
+
 # Write a CHANGELOG.md next to each crate's Cargo.toml.
 changelog_update = true
 
-# Publishing to crates.io is off. Every crate in this workspace sets
-# `publish = false`, because these are private services rather than libraries
-# anyone installs. release-plz would skip them anyway; saying so here means the
-# workflow log states the reason instead of leaving it to be inferred.
+# Publishing to a registry is off. These are private services, not libraries
+# anyone installs. This is the line that stops release-plz running
+# `cargo publish`; the `publish = ["internal"]` in the root Cargo.toml is a
+# second, independent guard against a person running it by hand.
 publish = false
 
 # cargo-semver-checks compares a crate's public application programming interface
