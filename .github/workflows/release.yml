@@ -44,20 +44,47 @@ env:
   RELEASE_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
 
 jobs:
+  # Is the token configured? A whole job to answer one yes-or-no question,
+  # because of where GitHub allows the answer to be asked.
+  #
+  # The obvious spelling is `if: ${{ secrets.RELEASE_PLZ_TOKEN != '' }}` on the
+  # job below. It is not merely ineffective - the `secrets` context is not
+  # available in a job-level `if` at all, and using it there makes the whole
+  # file invalid. Every job in it then fails to start, including the one that
+  # creates the tags. A step-level `if` may read `secrets`, and a job-level one
+  # may read `needs`; so the question is asked in a step here and the answer
+  # travels as a job output.
+  token:
+    name: Check for a release token
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - id: check
+        env:
+          # Through the environment, never interpolated into the script. A
+          # secret pasted into a run block is one `set -x` away from the log.
+          TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then present=true; else present=false; fi
+          echo "RELEASE_PLZ_TOKEN present: $present"
+          echo "present=$present" >> "$GITHUB_OUTPUT"
+
   release-pr:
     name: Release pull request
-    # Skipped, rather than attempted and failed, when RELEASE_PLZ_TOKEN is not
-    # set. Without it this job opens a pull request using the automatic
+    # Skipped, rather than attempted and failed, when the token is not set.
+    # Without it this job can only open a pull request using the automatic
     # GITHUB_TOKEN, which the repository setting "Allow GitHub Actions to
-    # create and approve pull requests" forbids, and the whole workflow reports
-    # red on every single push to master. A permanently red workflow is worse
-    # than a missing one: it teaches everybody to ignore the colour, and the
-    # next genuine failure is ignored with it.
+    # create and approve pull requests" forbids, and the whole workflow then
+    # reports red on every single push to master. A permanently red workflow is
+    # worse than a missing one: it teaches everybody to ignore the colour, and
+    # the next genuine failure is ignored with it.
     #
     # "Not configured" and "broken" are different claims and should not look
     # the same. A skipped job says the first. Add the secret and this job
     # starts running with no edit here.
-    if: ${{ secrets.RELEASE_PLZ_TOKEN != '' }}
+    needs: token
+    if: needs.token.outputs.present == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write # push the release branch
@@ -99,7 +126,7 @@ jobs:
     # the repository setting "Allow GitHub Actions to create and approve pull
     # requests" being off produced a 403 in the first job and silently skipped
     # every tag and release in the second.
-    needs: release-pr
+    needs: [token, release-pr]
     if: always()
     runs-on: ubuntu-latest
     permissions:
