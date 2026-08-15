@@ -46,3 +46,16 @@ pub const CONSUMER_AUDIT: &str = "order-audit";
 /// Used by the `dlq-replay` tool to drain the dead-letter stream. Durable so a
 /// half-finished drain resumes where it stopped rather than starting over.
 pub const CONSUMER_DLQ_REPLAY: &str = "order-dlq-replay";
+
+/// The consumer a *dry run* reads through, kept separate from the one above.
+///
+/// Looking must not disturb the position of the thing that acts. Sharing one
+/// consumer forced the tool to delete it before every run — which threw away
+/// the acknowledgements of every message already replayed, so each run
+/// replayed the entire history again. On a queue of poison messages that
+/// doubles it: 1,714 became 3,427 in a single run.
+///
+/// This one is disposable and is deleted at the start of each dry run. The
+/// replay consumer is not, and its acknowledgement floor is what makes
+/// "how many are still waiting" a question with an answer.
+pub const CONSUMER_DLQ_INSPECT: &str = "order-dlq-inspect";

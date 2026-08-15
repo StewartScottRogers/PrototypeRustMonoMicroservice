@@ -9,6 +9,7 @@
     <File Path="DevLogs.cmd" />
     <File Path="DevRemove.cmd" />
     <File Path="DevReplay.cmd" />
+    <File Path="DevReplayDryRun.cmd" />
     <File Path="DevStart.cmd" />
     <File Path="DevStatus.cmd" />
     <File Path="DevStop.cmd" />
