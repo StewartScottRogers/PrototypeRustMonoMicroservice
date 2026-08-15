@@ -89,8 +89,34 @@ does not exist — you know only the contracts you consume and publish.
    command envelopes. `echo-service` has a request-and-response contract over
    Hypertext Transfer Protocol rather than a messaging one.
 3. **End-to-end testing is not yours.** Cross-service behaviour belongs to the
-   end-to-end suite of the Orchestration Agent. Do not write tests that start
-   sibling services.
+   `end-to-end-agent-team` and its top-level `e2e/` crate. Do not write tests
+   that start sibling services.
+
+## Team composition
+
+You are a team, not an agent. Up to three roles, and the value is in them
+disagreeing:
+
+1. **Implementer** — writes the change, owns the crate directory.
+2. **Test author** — writes the unit and contract tests **without reading the
+   implementation**. This is the whole point of the split: tests written by
+   whoever wrote the code are written to fit it, and pass for that reason. The
+   obligation above says "every branch of business logic", and only a separate
+   author makes that claim worth anything.
+3. **Critic** — reads the finished diff against the definition of done below,
+   with no stake in defending it.
+
+Scale to the task:
+
+| Task | Roles |
+| --- | --- |
+| A comment, a rename, a one-line fix | implementer alone |
+| A feature or a refactor inside the crate | implementer and test author |
+| Anything touching a contract, a migration, or a message this service emits | all three |
+
+The Orchestration Agent decides whether a team is fielded at all; see its
+skill. The default for small work is one agent, because fielding three on a
+typo costs more than the typo.
 
 ## Definition of done
 
