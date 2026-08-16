@@ -146,13 +146,27 @@
   <h2>Work is parked</h2>
   <p class="says">The panel says: <b>messages failed three times and were set aside.</b></p>
   <ol>
-    <li>Look first, change nothing: <code>DevReplay.cmd --dry-run</code></li>
-    <li>Decide whether the cause is fixed. Replaying into a system that still
-      rejects them just parks them again three attempts later.</li>
+    <li>Look first, change nothing: <code>DevReplayDryRun.cmd</code>. It is
+      exactly <code>DevReplay.cmd --dry-run</code>, as its own script so that
+      looking is never one forgotten argument away from acting.</li>
+    <li><strong>Read the <code>item</code> field on what it lists.</strong> If
+      every one says <code>poison</code>, these are the generator's ''Poison
+      order'' messages — built to fail, and they will fail again. Replaying
+      them achieves nothing but three more attempts each. Leave them, or clear
+      the stack's data with <code>DevRemove.cmd</code> if the amber banner is in
+      the way of a demonstration.</li>
+    <li>Otherwise, decide whether the cause is fixed. Replaying into a system
+      that still rejects them just parks them again.</li>
     <li>When it is fixed, put them back: <code>DevReplay.cmd</code></li>
     <li>Watch <em>parked as dead letters</em> fall, and the worker's throughput
       rise as it works through the backlog.</li>
   </ol>
+  <p class="why">
+    The listing stops at a thousand and then waits three seconds for another
+    message before deciding the queue is empty, so a count smaller than the
+    badge on the panel means the batch ended rather than the queue did. The
+    badge is the length of the queue; the listing is a sample of it.
+  </p>
   <p class="why">
     Nothing clears these on its own, and that is deliberate rather than an
     oversight. A message that failed three times is a question — bad data, a

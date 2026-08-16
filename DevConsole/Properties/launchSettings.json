@@ -21,7 +21,7 @@
     },
     "Dev Replay (dry run)": {
       "commandName": "Project",
-      "commandLineArgs": "replay --dry-run"
+      "commandLineArgs": "replaydry"
     },
     "Dev Gource (watch the history)": {
       "commandName": "Project",

@@ -616,7 +616,29 @@ impl Collector {
         // Everything downstream now has to decide what to do about "unknown",
         // which is the point.
         let worker_backlog = depths.get("consumer:order-worker").copied();
-        let dead_letters = depths.get("stream:ORDER_DLQ").copied();
+
+        // How many dead letters are still *waiting to be put back*, not how
+        // many have ever been dead-lettered.
+        //
+        // The stream's own message count is the second of those, and it never
+        // falls: acknowledging a message does not delete it from a stream with
+        // limits-based retention, so `ORDER_DLQ` still holds every message it
+        // has ever received. Reporting that made the badge a monotonic tally
+        // wearing the label of a work queue, and made the runbook's "watch it
+        // fall as you replay" impossible advice.
+        //
+        // The replay consumer's pending count is the honest answer: it is what
+        // that consumer has not yet acknowledged, so replaying drives it to
+        // zero and a fresh failure pushes it back up.
+        //
+        // The stream count is the fallback for a stack where nobody has ever
+        // run the replay tool, so the consumer does not exist yet. Everything
+        // in the stream is waiting in that case, which is exactly what the
+        // stream count says.
+        let dead_letters = depths
+            .get("consumer:order-dlq-replay")
+            .or_else(|| depths.get("stream:ORDER_DLQ"))
+            .copied();
 
         let mut nodes = Vec::new();
         let mut alarms = Vec::new();

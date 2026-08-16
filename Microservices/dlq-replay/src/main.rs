@@ -77,19 +77,38 @@ async fn main() -> Result<()> {
 
 /// Reads every dead letter and republishes it as a command.
 async fn drain(messaging: &Messaging, dry_run: bool) -> Result<usize> {
-    // Always start from a clean consumer. A one-shot tool has no state worth
-    // resuming, and an existing consumer would keep whatever settings it was
-    // first created with - which is how an early version of this tool made the
-    // queue undrainable, by spending each message's single delivery attempt on
-    // a dry run that never acknowledged it.
-    messaging
-        .delete_consumer(subjects::STREAM_DEAD_LETTER, subjects::CONSUMER_DLQ_REPLAY)
-        .await?;
+    // Looking and acting read through different consumers, and only the
+    // looking one is thrown away.
+    //
+    // Both used to share one, deleted at the start of every run to guarantee a
+    // clean slate. That clean slate was the bug: deleting a consumer discards
+    // its acknowledgements, so every run replayed the entire history of the
+    // dead-letter stream again rather than only what was still waiting. On a
+    // queue of messages that fail by design, replaying doubles it — 1,714
+    // became 3,427 in one run, and would have kept doubling.
+    //
+    // The replay consumer is now durable in the sense the name always claimed:
+    // it remembers what it has already put back, so running this twice does
+    // not send anything twice, and the count of what is left actually falls.
+    let consumer = if dry_run {
+        subjects::CONSUMER_DLQ_INSPECT
+    } else {
+        subjects::CONSUMER_DLQ_REPLAY
+    };
+
+    // Only the inspection consumer is reset. A dry run should always show
+    // everything that is waiting, and it holds messages back rather than
+    // acknowledging them, so its position is worth nothing between runs.
+    if dry_run {
+        messaging
+            .delete_consumer(subjects::STREAM_DEAD_LETTER, consumer)
+            .await?;
+    }
 
     let mut messages = messaging
         .durable_consumer(
             subjects::STREAM_DEAD_LETTER,
-            subjects::CONSUMER_DLQ_REPLAY,
+            consumer,
             subjects::ORDER_DEAD_LETTER,
             // Unlimited redelivery. Anything finite means a failed or
             // abandoned drain permanently strands messages that are already,

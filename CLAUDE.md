@@ -63,6 +63,7 @@ docker run --rm -p 8080:8080 echo-service:local
 
 DevStart.cmd     # whole stack: 5 services, NATS, Jaeger, PostgreSQL, Redis
 DevDemo.cmd      # run and narrate the whole demonstration
+DevReplayDryRun.cmd # list the dead letters, change nothing
 DevReplay.cmd    # put dead letters back on the queue (--dry-run to look first)
 DevConsole.cmd   # open every graphical interface in one page; starts the stack if it is down
 DevGource.cmd    # replay the repository history as an animated tree (--video writes gource.mp4)
