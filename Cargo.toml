@@ -114,7 +114,7 @@ tower = { version = "0.5", features = ["util"] }
 # Only the cross-origin layer is enabled. The package is already in the
 # dependency graph by way of axum, so naming it here costs a feature flag
 # rather than a new package.
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.7", features = ["cors"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
