@@ -93,7 +93,7 @@ jobs:
           # whole workspace and ends up inside a published image layer.
           persist-credentials: false
 
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       # the GitHub Container Registry rejects any uppercase character in a repository name, and this
       # org/repository has several. Never interpolate github.repository directly.
@@ -133,7 +133,7 @@ jobs:
 
       - name: Build and push
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           build-args: SERVICE=${{ matrix.service }}
@@ -155,7 +155,7 @@ jobs:
       # ignore-unfixed because an advisory with no available patch is not
       # actionable here - it would turn the gate into noise that gets ignored.
       - name: Scan the image for vulnerabilities
-        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297 # master, 0.33.1
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e # master, 0.33.1
         with:
           image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           format: table
