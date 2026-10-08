@@ -25,7 +25,7 @@ REM      setx CLAUDE_MODEL "claude-sonnet-5"
 REM  (default: claude-opus-5 -- the latest, most capable model)
 REM ============================================================
 
-if not defined CLAUDE_MODEL set "CLAUDE_MODEL=claude-opus-5"
+if not defined CLAUDE_MODEL set "CLAUDE_MODEL=opus"
 set "STARTED_HERDR="
 
 REM  Use this repository's RunClaude.cmd as the in-pane command so the

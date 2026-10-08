@@ -16,6 +16,7 @@
     <File Path="hrdrClaudeNative.cmd" />
     <File Path="README.md" />
     <File Path="RunClaude.cmd" />
+    <File Path="ScreenShot.png" />
   </Folder>
   <Project Path="AgentSkills/AgentSkills.shproj" Id="d8c4217e-89dd-4161-88f1-01437da00608" />
   <Project Path="Cargo/Cargo.shproj" Id="588a4070-b600-4443-a9b6-4a68094b0df8" />
