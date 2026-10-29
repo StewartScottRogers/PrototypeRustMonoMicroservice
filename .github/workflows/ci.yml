@@ -102,7 +102,7 @@ jobs:
         run: cargo nextest run --profile ci -p "$CRATE" --all-features --no-tests=pass
       - name: Upload JUnit report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: junit-${{ matrix.crate }}
           path: target/nextest/ci/junit.xml
@@ -138,7 +138,7 @@ jobs:
       - name: Summarise
         if: always()
         run: cargo llvm-cov report --summary-only >> "$GITHUB_STEP_SUMMARY" || true
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: coverage-lcov
@@ -159,7 +159,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Start the stack
         # --wait blocks until every container with a healthcheck reports
